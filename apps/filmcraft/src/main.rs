@@ -95,6 +95,10 @@ fn main() -> eframe::Result {
             std::process::exit(2);
         }
     };
+    // Z4K build: the control channel (loopback only) is always on, so Claude can connect to every
+    // launch; the window still opens normally unless `--control` asked for an agent launch.
+    let agent_launch = control_port.is_some();
+    let control_port = control_port.or(Some(9876));
     let log_dir = data_dir.clone().or_else(default_data_dir).map(|d| d.join(logging::LOG_DIR));
     log::info!("FilmCraft {} ({} {})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
     // The log file lives next to the crash logs; opened after the arguments, so `--help`,
@@ -129,11 +133,11 @@ fn main() -> eframe::Result {
             .with_titlebar_shown(false)
             .with_title_shown(false)
             // Started for an agent (`--control`): open without taking the user's keyboard focus.
-            .with_active(control_port.is_none())
+            .with_active(!agent_launch)
             .with_icon(app_icon())
             // Wayland matches the window to `packaging/linux/ai.storyteller.filmcraft.desktop`.
             .with_app_id(APP_ID),
-        event_loop_builder: agent_event_loop(control_port.is_some()),
+        event_loop_builder: agent_event_loop(agent_launch),
         ..Default::default()
     };
     // Before eframe creates the wgpu instance: leave OpenGL out on Windows (see graphics.rs).
