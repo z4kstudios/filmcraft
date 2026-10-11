@@ -97,12 +97,25 @@ fn category(width: u32, height: u32) -> &'static str {
     if height > width { "Vertical" } else { "EffectCraft" }
 }
 
-/// The EffectCraft templates as Browse library entries (id `ec:<path>`, category "EffectCraft" or "Vertical").
+/// Category from the folder a template sits in: `<templates>/Team Wong/Logo.ectemplate` is in
+/// "Team Wong". A template's own folder (`YouTube CTA/YouTube CTA.ectemplate`) is not a category.
+fn folder_category(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    let mut parts = rel.components();
+    let first = parts.next()?.as_os_str().to_string_lossy().to_string();
+    parts.next()?; // the template is in a subfolder
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    (first != stem && !first.trim().is_empty()).then_some(first)
+}
+
+/// The EffectCraft templates as Browse library entries (id `ec:<path>`; category = their subfolder,
+/// else "EffectCraft" or "Vertical").
 pub fn library_entries(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<LibraryEntry> {
     let mut v = load(ctx);
     let now = ctx.input(|i| i.time);
     let list = templates(app, &mut v, now);
     store(ctx, v);
+    let root = ec::templates_dir(&app.session);
     list.into_iter()
         .map(|t| {
             let fields = t.controls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ");
@@ -112,7 +125,7 @@ pub fn library_entries(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<LibraryEn
                 version: TEMPLATE_VERSION,
                 id: format!("{PREFIX}{}", t.path),
                 name: t.name.clone(),
-                category: category(t.width, t.height).into(),
+                category: root.as_deref().and_then(|r| folder_category(r, Path::new(&t.path))).unwrap_or_else(|| category(t.width, t.height).to_string()),
                 description: format!("EffectCraft template · {}×{} · {secs:.1} s · editable: {fields}", t.width, t.height),
                 author: String::new(),
                 license: String::new(),
@@ -374,7 +387,18 @@ pub fn edit(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::category;
+    use super::{category, folder_category};
+    use std::path::Path;
+
+    #[test]
+    fn a_templates_subfolder_is_its_category() {
+        let root = Path::new("/t");
+        assert_eq!(folder_category(root, Path::new("/t/Team Wong/Logo Reveal.ectemplate")).as_deref(), Some("Team Wong"));
+        assert_eq!(folder_category(root, Path::new("/t/Team Wong/Logo/Logo.ectemplate")).as_deref(), Some("Team Wong"));
+        assert_eq!(folder_category(root, Path::new("/t/YouTube CTA/YouTube CTA.ectemplate")), None);
+        assert_eq!(folder_category(root, Path::new("/t/CTA.ectemplate")), None);
+        assert_eq!(folder_category(root, Path::new("/elsewhere/A/B.ectemplate")), None);
+    }
 
     #[test]
     fn taller_than_wide_templates_go_in_the_vertical_category() {
