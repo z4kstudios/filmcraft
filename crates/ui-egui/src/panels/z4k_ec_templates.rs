@@ -92,7 +92,12 @@ fn templates(app: &FilmcraftApp, v: &mut View, now: f64) -> Vec<TemplateInfo> {
     v.library.1.clone()
 }
 
-/// The EffectCraft templates as Browse library entries (id `ec:<path>`, category "EffectCraft").
+/// Browse category: "Vertical" for templates taller than wide (reels/social), else "EffectCraft".
+fn category(width: u32, height: u32) -> &'static str {
+    if height > width { "Vertical" } else { "EffectCraft" }
+}
+
+/// The EffectCraft templates as Browse library entries (id `ec:<path>`, category "EffectCraft" or "Vertical").
 pub fn library_entries(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<LibraryEntry> {
     let mut v = load(ctx);
     let now = ctx.input(|i| i.time);
@@ -107,7 +112,7 @@ pub fn library_entries(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<LibraryEn
                 version: TEMPLATE_VERSION,
                 id: format!("{PREFIX}{}", t.path),
                 name: t.name.clone(),
-                category: "EffectCraft".into(),
+                category: category(t.width, t.height).into(),
                 description: format!("EffectCraft template · {}×{} · {secs:.1} s · editable: {fields}", t.width, t.height),
                 author: String::new(),
                 license: String::new(),
@@ -364,5 +369,19 @@ pub fn edit(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let mut render = values.clone();
         render.retain(|k, val| !(val.is_empty() && info.controls.iter().any(|c| &c.name == k && c.kind == "media")));
         start(app, &ctx, info, render, Purpose::Set { clip: clip.0, values });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::category;
+
+    #[test]
+    fn taller_than_wide_templates_go_in_the_vertical_category() {
+        assert_eq!(category(2160, 3840), "Vertical");
+        assert_eq!(category(1080, 1920), "Vertical");
+        assert_eq!(category(3840, 2160), "EffectCraft");
+        assert_eq!(category(1080, 1080), "EffectCraft");
+        assert_eq!(category(0, 0), "EffectCraft");
     }
 }
