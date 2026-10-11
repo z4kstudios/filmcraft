@@ -95,7 +95,8 @@ fn cached_library(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<LibraryEntry> 
     {
         return l.1.clone();
     }
-    let v = library(&app.session);
+    let mut v = library(&app.session);
+    v.extend(crate::panels::z4k_ec_templates::library_entries(app, ctx)); // Z4K
     ctx.data_mut(|d| d.insert_temp(lib_id(), Lib(Arc::new((now, v.clone())))));
     v
 }
@@ -137,15 +138,14 @@ pub fn essential_graphics(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect)
     let tab = match app.ui.gfx_templates.tab.as_str() {
         "browse" => "browse",
         "edit" => "edit",
-        "effectcraft" => "effectcraft", // Z4K
         _ if crate::panels::graphics::graphic_selected(app) => "edit",
-        _ if crate::panels::z4k_ec_templates::clip_selected(app) => "effectcraft", // Z4K
+        _ if crate::panels::z4k_ec_templates::clip_selected(app) => "edit", // Z4K
         _ => "browse",
     };
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), 30.0));
     ui.painter().line_segment([head.left_bottom(), head.right_bottom()], Stroke::new(1.0, t.separator));
     let mut elems: Elems = Vec::new();
-    for (i, (id, label)) in [("browse", tl!("Browse")), ("edit", tl!("Edit")), ("effectcraft", "EffectCraft")].into_iter().enumerate() {
+    for (i, (id, label)) in [("browse", tl!("Browse")), ("edit", tl!("Edit"))].into_iter().enumerate() {
         let r = Rect::from_min_size(pos2(head.min.x + 8.0 + i as f32 * 80.0, head.min.y), vec2(76.0, 30.0));
         if tab_button(ui, r, label, tab == id, &t).clicked() {
             app.ui.gfx_templates.tab = id.into();
@@ -156,10 +156,10 @@ pub fn essential_graphics(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect)
         app.auto.add(&id, r, &l);
     }
     let body = Rect::from_min_max(pos2(rect.min.x, head.max.y + 1.0), rect.max);
-    if tab == "edit" {
+    if tab == "edit" && crate::panels::z4k_ec_templates::clip_selected(app) {
+        crate::panels::z4k_ec_templates::edit(app, ui, body); // Z4K
+    } else if tab == "edit" {
         crate::panels::graphics::properties(app, ui, body);
-    } else if tab == "effectcraft" {
-        crate::panels::z4k_ec_templates::panel(app, ui, body); // Z4K
     } else {
         browse(app, ui, body);
     }
@@ -237,11 +237,17 @@ fn browse(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
                         let ir = Rect::from_min_size(r.min + vec2(5.0, 5.0), vec2(card.x - 10.0, 84.0));
                         // dark checker-free backdrop so white titles read
                         ui.painter().rect_filled(ir, 2.0, Color32::from_rgb(0x2a, 0x30, 0x3a));
-                        let tex = thumb_texture(ui.ctx(), e);
-                        let sz = tex.size_vec2();
-                        let k = (ir.width() / sz.x).min(ir.height() / sz.y);
-                        let tr = Rect::from_center_size(ir.center(), sz * k);
-                        ui.painter().image(tex.id(), tr, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                        let tex = if crate::panels::z4k_ec_templates::is_ec(&e.template.id) {
+                            crate::panels::z4k_ec_templates::thumb_texture(app, ui.ctx(), &e.template.id) // Z4K
+                        } else {
+                            Some(thumb_texture(ui.ctx(), e))
+                        };
+                        if let Some(tex) = tex {
+                            let sz = tex.size_vec2();
+                            let k = (ir.width() / sz.x).min(ir.height() / sz.y);
+                            let tr = Rect::from_center_size(ir.center(), sz * k);
+                            ui.painter().image(tex.id(), tr, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                        }
                         ui.painter().text(pos2(r.min.x + 6.0, ir.max.y + 6.0), Align2::LEFT_TOP, crate::i18n::t(&e.template.name), Tokens::ui(11.5), t.text);
                         let category = crate::i18n::t(&e.template.category);
                         let sub = if e.path.is_some() { tlf!("{category} · My Template", category) } else { category.to_string() };
@@ -273,7 +279,7 @@ fn browse(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         if r.clicked() {
             apply = selected.clone();
         }
-        let user = sel_entry.is_some_and(|e| e.path.is_some());
+        let user = sel_entry.is_some_and(|e| e.path.is_some() && !crate::panels::z4k_ec_templates::is_ec(&e.template.id));
         let r = ui.add_enabled(user, egui::Button::new(tl!("Remove")));
         elems.push(("gfxTemplates.remove".into(), r.rect, "Remove".into()));
         if r.clicked()
@@ -299,6 +305,13 @@ fn browse(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let _ = route(app, &ctx, "graphics.template.install", &json!({}));
     }
     for (cmd, p) in actions {
+        if cmd == "graphics.template.apply"
+            && let Some(id) = p.get("template").and_then(Value::as_str).filter(|id| crate::panels::z4k_ec_templates::is_ec(id))
+        {
+            crate::panels::z4k_ec_templates::start_apply(app, &ctx, id, None, None); // Z4K
+            app.ui.gfx_templates.tab = "edit".into();
+            continue;
+        }
         match app.session.execute(&cmd, p) {
             Ok(v) => {
                 if cmd == "graphics.template.apply" {
@@ -593,8 +606,10 @@ pub fn route(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Val
     let empty = params.as_object().is_none_or(|m| m.is_empty());
     match id {
         "graphics.template.install" if params.get("path").is_none() => {
-            let path = app.hooks.pick_open_file.as_mut().and_then(|f| f(tl!("FilmCraft Graphics Template"), &["fcgt"]))?;
-            let r = app.session.execute(id, json!({"path": path})).map_err(|e| e.to_string());
+            let path = app.hooks.pick_open_file.as_mut().and_then(|f| f(tl!("FilmCraft Graphics Template"), &["fcgt", "ectemplate"]))?;
+            // Z4K: EffectCraft templates install with their own command
+            let cmd = if path.to_ascii_lowercase().ends_with(".ectemplate") { "graphics.ecTemplate.install" } else { id };
+            let r = app.session.execute(cmd, json!({"path": path})).map_err(|e| e.to_string());
             invalidate(ctx);
             Some(r)
         }
@@ -632,6 +647,7 @@ pub fn route(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Val
 
 /// Draw this module's dialogs.
 pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) {
+    crate::panels::z4k_ec_templates::poll(app, ctx); // Z4K
     export_dialog(app, ctx);
     replace_dialog(app, ctx);
 }

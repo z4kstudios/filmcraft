@@ -2584,7 +2584,11 @@ fn interact(app: &mut FilmcraftApp, ui: &mut egui::Ui, seq: &Sequence, layout: &
             let r = Rect::from_min_max(pos2(layout.x_of(t), row.rect.min.y + 1.0), pos2(layout.x_of(t) + 60.0, row.rect.max.y - 1.0));
             ui.painter().rect_stroke(r, 3.0, Stroke::new(1.5, Color32::WHITE), StrokeKind::Inside);
         }
-        if ctx.input(|i| i.pointer.any_released()) {
+        if ctx.input(|i| i.pointer.any_released()) && crate::panels::z4k_ec_templates::is_ec(&template) {
+            // Z4K: EffectCraft templates render on a worker, then land here
+            crate::panels::z4k_ec_templates::start_apply(app, ui.ctx(), &template, Some(t.0), row.map(|r| r.index));
+            crate::panels::clear_drag(ui);
+        } else if ctx.input(|i| i.pointer.any_released()) {
             let mut q = json!({"template": template, "time": t.0});
             if let Some(row) = row {
                 q["track"] = json!(row.index);

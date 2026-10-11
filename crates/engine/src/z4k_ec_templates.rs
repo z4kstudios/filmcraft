@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use filmcraft_project::{ClipId, ItemId};
+use filmcraft_project::{ClipId, ItemId, MediaRef};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -37,6 +37,8 @@ pub const EXTENSION: &str = "ectemplate";
 pub const METADATA_KEY: &str = "Z4K EffectCraft Template";
 
 const CLI_ENV: &str = "FILMCRAFT_EFFECTCRAFT_CLI";
+/// Project bin that holds the renders of placed templates.
+pub const BIN: &str = "Motion Graphics";
 /// Largest number of editable controls read from a manifest (manifests are untrusted).
 const MAX_CONTROLS: usize = 64;
 /// Longest text value accepted for a control.
@@ -232,14 +234,41 @@ pub fn templates_dir(s: &Session) -> Option<PathBuf> {
     crate::graphic_templates::user_templates_dir(s)
 }
 
-/// Installed templates, by file name (files that can't be read are skipped).
+/// `.ectemplate` files in `dir` and its subfolders (a template's own folder, like
+/// `YouTube CTA/YouTube CTA.ectemplate`, works), sorted. Hidden folders and render folders are
+/// skipped; depth and count are bounded.
+pub fn find_templates(dir: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, depth: usize, budget: &mut usize, out: &mut Vec<PathBuf>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.filter_map(|e| e.ok()) {
+            if *budget == 0 || out.len() >= 500 {
+                return;
+            }
+            *budget -= 1;
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if p.is_dir() {
+                if depth < 4 && !name.ends_with("EffectCraft Renders") && !name.ends_with("Auto-Save") {
+                    walk(&p, depth + 1, budget, out);
+                }
+            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case(EXTENSION)) {
+                out.push(p);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, 0, &mut 20_000, &mut out);
+    out.sort();
+    out
+}
+
+/// Installed templates (files that can't be read are skipped).
 pub fn library(s: &Session) -> Vec<TemplateInfo> {
     let Some(dir) = templates_dir(s) else { return Vec::new() };
-    let Ok(rd) = std::fs::read_dir(&dir) else { return Vec::new() };
-    let mut paths: Vec<PathBuf> =
-        rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case(EXTENSION))).collect();
-    paths.sort();
-    paths.into_iter().take(500).filter_map(|p| read_info(&p.to_string_lossy()).ok()).collect()
+    find_templates(&dir).into_iter().filter_map(|p| read_info(&p.to_string_lossy()).ok()).collect()
 }
 
 /// Find a template by path or by name among the installed ones.
@@ -504,6 +533,73 @@ fn render_in(t: &TemplateInfo, values: &BTreeMap<String, String>, job: &Path, ou
     std::fs::rename(&tmp, out).or_else(|_| std::fs::copy(&tmp, out).map(|_| ())).map_err(|e| other(format!("can't write {}: {e}", out.display())))
 }
 
+/// Where template thumbnails are cached (`<data dir>/EffectCraft Thumbnails`).
+pub fn thumb_dir(s: &Session) -> PathBuf {
+    s.prefs_path
+        .as_ref()
+        .and_then(|p| p.parent())
+        .map(|d| d.join("EffectCraft Thumbnails"))
+        .unwrap_or_else(|| std::env::temp_dir().join("FilmCraft EffectCraft Thumbnails"))
+}
+
+/// Thumbnail file of template `t` in `dir` (changes when the template file changes).
+pub fn thumb_path(t: &TemplateInfo, dir: &Path) -> PathBuf {
+    dir.join(format!("{}.png", render_key(t, &BTreeMap::new())))
+}
+
+/// Render a still of template `t` (its default values, a little past the middle, where
+/// animations have usually arrived) to `out` as PNG. Runs EffectCraft's command-line tool.
+pub fn render_thumbnail(t: &TemplateInfo, out: &Path) -> Result<()> {
+    if t.comp_name.is_empty() {
+        return Err(other(format!("{} has no composition", t.path)));
+    }
+    let dir = out.parent().ok_or_else(|| other("no thumbnail folder"))?;
+    let job = dir.join(".jobs").join(render_key(t, &BTreeMap::new()));
+    std::fs::create_dir_all(&job).map_err(|e| other(format!("can't create {}: {e}", job.display())))?;
+    let r = (|| {
+        let project = job.join("thumb.ecproj").to_string_lossy().to_string();
+        let create = json!({"path": t.path, "projectPath": project}).to_string();
+        run_cli(&["exec", "templates.create", "--params", &create, "--empty"])?;
+        let tmp = job.join("thumb.png");
+        let time = format!("{:.3}", (t.duration * 0.55).max(0.0));
+        let ts = tmp.to_string_lossy().to_string();
+        run_cli(&["render-frame", "--comp", &t.comp_name, "--time", &time, "--max-side", "384", "--out", &ts, "--project", &project])?;
+        std::fs::rename(&tmp, out).map_err(|e| other(format!("can't write {}: {e}", out.display())))
+    })();
+    let _ = std::fs::remove_dir_all(&job);
+    r
+}
+
+/// Delete renders in this project's render folder that no project item uses any more (run after
+/// a save, so old versions of edited template clips don't pile up). Returns how many went.
+pub fn cleanup_renders(s: &Session) -> usize {
+    let Ok(dir) = render_dir(s) else { return 0 };
+    let Ok(rd) = std::fs::read_dir(&dir) else { return 0 };
+    let used: std::collections::HashSet<PathBuf> = s
+        .project
+        .items
+        .values()
+        .filter_map(|i| i.as_media())
+        .filter_map(|m| match &m.media {
+            MediaRef::File { path } => Some(std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))),
+            MediaRef::Generator(_) => None,
+        })
+        .collect();
+    let mut n = 0;
+    for e in rd.filter_map(|e| e.ok()).take(10_000) {
+        let p = e.path();
+        if !p.is_file() || !p.extension().is_some_and(|x| x.eq_ignore_ascii_case("mov")) {
+            continue;
+        }
+        let c = std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+        if !used.contains(&c) && std::fs::remove_file(&p).is_ok() {
+            n += 1;
+        }
+    }
+    let _ = std::fs::remove_dir_all(dir.join(".jobs"));
+    n
+}
+
 // ------------------------------------------------------------------------------------------------
 // Commands
 // ------------------------------------------------------------------------------------------------
@@ -582,16 +678,27 @@ fn list(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(Value::Array(library(s).iter().map(|t| info_json(t, None)).collect()))
 }
 
+/// Copy `src` into `dir` (nothing to do when it is already there, or linked there: copying a
+/// file onto itself would truncate it).
+fn copy_into(src: &Path, dir: &Path) -> Result<PathBuf> {
+    let name = src.file_name().ok_or_else(|| bad("graphics.ecTemplate.install", "no file name"))?;
+    let dest = dir.join(name);
+    let same = match (std::fs::canonicalize(src), std::fs::canonicalize(&dest)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    if !same {
+        std::fs::copy(src, &dest).map_err(|e| other(format!("can't copy to {}: {e}", dest.display())))?;
+    }
+    Ok(dest)
+}
+
 fn install(s: &mut Session, p: &Value) -> Result<Value> {
     let path = str_p(p, "path").ok_or_else(|| bad("graphics.ecTemplate.install", "need `path`"))?;
     let info = read_info(path)?;
     let dir = templates_dir(s).ok_or_else(|| other("no data directory to install templates into"))?;
     std::fs::create_dir_all(&dir).map_err(|e| other(format!("can't create {}: {e}", dir.display())))?;
-    let name = Path::new(path).file_name().ok_or_else(|| bad("graphics.ecTemplate.install", "no file name"))?;
-    let dest = dir.join(name);
-    if dest != Path::new(path) {
-        std::fs::copy(path, &dest).map_err(|e| other(format!("can't copy to {}: {e}", dest.display())))?;
-    }
+    let dest = copy_into(Path::new(path), &dir)?;
     Ok(json!({"path": dest.to_string_lossy(), "name": info.name}))
 }
 
@@ -602,26 +709,91 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     let values = normalise(&t, CMD, values_p(CMD, p)?)?;
     let movie = rendered(s, CMD, p, &t, &values)?;
     let before = s.history.undo.len();
+    let r = place(s, &t, &values, &movie, p, before);
+    if r.is_err() {
+        roll_back(s, before, "Apply EffectCraft Template");
+    }
+    r
+}
+
+/// Undo everything done since `before` (a failed command leaves no half-made edit behind).
+fn roll_back(s: &mut Session, before: usize, label: &str) {
+    if s.history.undo.len() > before {
+        fold_undo(s, before, label);
+        let _ = s.execute("edit.undo", json!({}));
+    }
+}
+
+fn place(s: &mut Session, t: &TemplateInfo, values: &BTreeMap<String, String>, movie: &str, p: &Value, before: usize) -> Result<Value> {
     let mut q = json!({"path": movie});
     for k in ["time", "seconds", "frame", "timecode", "track"] {
         if let Some(v) = p.get(k) {
             q[k] = v.clone();
         }
     }
-    let r = s.execute("graphics.newFromFile", q)?;
+    let r = match s.execute("graphics.newFromFile", q.clone()) {
+        Ok(r) => r,
+        // the chosen track is taken at that time: the free track above, as without one
+        Err(_) if q.get("track").is_some() => {
+            roll_back(s, before, "Apply EffectCraft Template");
+            if let Some(o) = q.as_object_mut() {
+                o.remove("track");
+            }
+            s.execute("graphics.newFromFile", q)?
+        }
+        Err(e) => return Err(e),
+    };
     let item = u64_p(&r, "item").map(ItemId).ok_or_else(|| other("the render was not placed"))?;
     let clip = u64_p(&r, "clip");
+    let mut clips: Vec<ClipId> = clip.map(ClipId).into_iter().collect();
+    // the template's sound goes on a free audio track (a new one if none is free), linked
+    if let Some(c) = clip.map(ClipId)
+        && s.project.item(item).is_some_and(|i| i.has_audio())
+    {
+        let span = s.active_sequence().and_then(|q| q.find_item(c)).map(|(_, it)| (it.start, it.end()));
+        if let Some((start, end)) = span {
+            let free = s
+                .active_sequence()
+                .and_then(|q| q.audio_tracks.iter().find(|t| !t.locked && t.items.iter().all(|i| i.end() <= start || i.start >= end)).map(|t| t.id.0));
+            let track = free.map(|t| json!(t)).unwrap_or_else(|| json!("new"));
+            let placed = s.execute("timeline.place", json!({"item": item.0, "audioTrack": track, "video": false, "time": start.0}))?;
+            if let Some(a) = placed.get("clips").and_then(Value::as_array).and_then(|v| v.first()).and_then(Value::as_u64) {
+                s.execute("clip.link", json!({"clips": [c.0, a]}))?;
+                clips.push(ClipId(a));
+            }
+        }
+    }
     let link = Link { template: t.path.clone(), values: values.clone() };
     set_link(s, item, &link, "Apply EffectCraft Template")?;
+    // filed in a "Motion Graphics" bin, like template media in other editors
+    let bin = s.project.root.children.iter().find_map(|e| match e {
+        filmcraft_project::BinEntry::Bin(b) if b.name == BIN => Some(b.id.0),
+        _ => None,
+    });
+    let bin = match bin {
+        Some(b) => Some(b),
+        None => s.execute("file.newBin", json!({"name": BIN})).ok().and_then(|r| u64_p(&r, "bin")),
+    };
+    if let Some(b) = bin {
+        s.execute("project.moveToBin", json!({"items": [item.0], "bin": b}))?;
+    }
     let name = t.name.clone();
     let _ = s.edit("Apply EffectCraft Template", |pr, _| {
         if let Some(it) = pr.item_mut(item) {
-            it.name = name;
+            it.name = name.clone();
+        }
+        Ok(())
+    });
+    let _ = s.edit_sequence("Apply EffectCraft Template", |q, _, _| {
+        for c in &clips {
+            if let Some((_, it)) = q.find_item_mut(*c) {
+                it.name = t.name.clone();
+            }
         }
         Ok(())
     });
     fold_undo(s, before, "Apply EffectCraft Template");
-    Ok(json!({"clip": clip, "item": item.0, "render": movie, "template": info_json(&t, Some(&values))}))
+    Ok(json!({"clip": clip, "item": item.0, "render": movie, "template": info_json(t, Some(values))}))
 }
 
 fn controls(s: &mut Session, p: &Value) -> Result<Value> {
@@ -645,8 +817,13 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let movie = rendered(s, CMD, p, &t, &link.values)?;
     let before = s.history.undo.len();
-    s.execute("media.relink", json!({"item": item.0, "path": movie, "force": true, "relinkOthers": false}))?;
-    set_link(s, item, &link, "Change EffectCraft Template")?;
+    let r = s
+        .execute("media.relink", json!({"item": item.0, "path": movie, "force": true, "relinkOthers": false}))
+        .and_then(|_| set_link(s, item, &link, "Change EffectCraft Template"));
+    if let Err(e) = r {
+        roll_back(s, before, "Change EffectCraft Template");
+        return Err(e);
+    }
     fold_undo(s, before, "Change EffectCraft Template");
     Ok(json!({"clip": clip.0, "item": item.0, "render": movie, "template": info_json(&t, Some(&link.values))}))
 }
@@ -785,6 +962,47 @@ mod tests {
         assert_ne!(a, b);
         assert_eq!(safe_name("a/b:c"), "a_b_c");
         assert_eq!(safe_name("  "), "EffectCraft Template");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installing_a_template_that_is_already_linked_keeps_it() {
+        let dir = std::env::temp_dir().join(format!("z4k-ec-install-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let lib = dir.join("Graphics Templates");
+        std::fs::create_dir_all(&lib).unwrap();
+        let src = dir.join("CTA.ectemplate");
+        std::fs::write(&src, b"template bytes").unwrap();
+        // linked into the folder: installing it again must not copy it onto itself
+        std::os::unix::fs::symlink(&src, lib.join("CTA.ectemplate")).unwrap();
+        let dest = copy_into(&src, &lib).unwrap();
+        assert_eq!(std::fs::read(&src).unwrap(), b"template bytes");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"template bytes");
+        // the file itself, from inside the folder
+        copy_into(&lib.join("CTA.ectemplate"), &lib).unwrap();
+        assert_eq!(std::fs::read(&src).unwrap(), b"template bytes");
+        // a new file is copied
+        let other = dir.join("Other.ectemplate");
+        std::fs::write(&other, b"other").unwrap();
+        assert_eq!(std::fs::read(copy_into(&other, &lib).unwrap()).unwrap(), b"other");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn templates_are_found_in_subfolders_but_not_in_hidden_or_render_folders() {
+        let dir = std::env::temp_dir().join(format!("z4k-ec-find-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for f in
+            ["A.ectemplate", "YouTube CTA/CTA.ectemplate", "x/y/z/Deep.ECTEMPLATE", ".hidden/H.ectemplate", "P EffectCraft Renders/R.ectemplate", "notes.txt"]
+        {
+            let p = dir.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, b"x").unwrap();
+        }
+        let found: Vec<String> = find_templates(&dir).iter().map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().to_string()).collect();
+        assert_eq!(found, ["A.ectemplate", "YouTube CTA/CTA.ectemplate", "x/y/z/Deep.ECTEMPLATE"]);
+        assert!(find_templates(&dir.join("missing")).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
