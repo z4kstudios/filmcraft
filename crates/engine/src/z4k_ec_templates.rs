@@ -433,12 +433,21 @@ fn item_sizes(project: &str) -> Result<HashMap<u64, (f64, f64)>> {
     Ok(m)
 }
 
+/// Whether the template has the sequence frame's aspect ratio.
+fn same_aspect(t: &TemplateInfo, frame: (u32, u32)) -> bool {
+    let (tw, th) = (t.width as f64, t.height as f64);
+    let (w, h) = (frame.0 as f64, frame.1 as f64);
+    tw > 0.0 && th > 0.0 && w > 0.0 && h > 0.0 && ((tw / th) / (w / h) - 1.0).abs() <= 0.01
+}
+
 /// Render resolution for a sequence frame: "full", "half" or "quarter" — the smallest that still
-/// covers the frame (a 4K template in an HD sequence renders at half size).
+/// covers the frame (a 4K template in an HD sequence renders at half size). A template of another
+/// shape (a vertical one in a 16:9 sequence) only needs to fit inside the frame.
 pub fn resolution_for(t: &TemplateInfo, frame: Option<(u32, u32)>) -> &'static str {
     let Some((w, h)) = frame else { return "full" };
     let (tw, th) = (t.width.max(1) as f64, t.height.max(1) as f64);
-    let r = (w as f64 / tw).max(h as f64 / th);
+    let (rw, rh) = (w as f64 / tw, h as f64 / th);
+    let r = if same_aspect(t, (w, h)) { rw.max(rh) } else { rw.min(rh) };
     if r <= 0.25 {
         "quarter"
     } else if r <= 0.5 {
@@ -462,14 +471,22 @@ pub fn sequence_size(s: &Session) -> Option<(u32, u32)> {
 }
 
 /// Scale (%) that fits a render of a frame-shaped template (same aspect ratio as the sequence)
-/// to the sequence frame; None for other templates (they are placed at 100%, centred).
+/// to the sequence frame. A template of another shape that is bigger than the frame (a vertical
+/// template in a 16:9 sequence) is scaled down until all of it is in frame. None: placed at 100%, centred.
 pub fn fit_scale(t: &TemplateInfo, res: &str, frame: (u32, u32)) -> Option<f64> {
     let (tw, th) = (t.width as f64, t.height as f64);
     let (w, h) = (frame.0 as f64, frame.1 as f64);
-    if tw <= 0.0 || th <= 0.0 || w <= 0.0 || h <= 0.0 || ((tw / th) / (w / h) - 1.0).abs() > 0.01 {
+    if tw <= 0.0 || th <= 0.0 || w <= 0.0 || h <= 0.0 {
         return None;
     }
-    let scale = w / (tw * res_factor(res)) * 100.0;
+    let (rw, rh) = (tw * res_factor(res), th * res_factor(res));
+    let scale = if same_aspect(t, frame) {
+        w / rw * 100.0
+    } else if rw > w || rh > h {
+        (w / rw).min(h / rh) * 100.0
+    } else {
+        return None;
+    };
     (scale.is_finite() && (scale - 100.0).abs() > 0.01).then_some(scale)
 }
 
@@ -1076,6 +1093,22 @@ mod tests {
         // not frame-shaped (a 1920×608 strip): placed as it is
         let strip = TemplateInfo { width: 1920, height: 608, ..Default::default() };
         assert_eq!(fit_scale(&strip, "full", (3840, 2160)), None);
+        // a vertical template in a 16:9 sequence is scaled down to fit inside the frame
+        let tall = TemplateInfo { width: 2160, height: 3840, ..Default::default() };
+        assert_eq!(resolution_for(&tall, Some((3840, 2160))), "full");
+        assert_eq!(resolution_for(&tall, Some((1920, 1080))), "half");
+        assert_eq!(resolution_for(&tall, Some((1080, 1920))), "half");
+        let s = fit_scale(&tall, "full", (3840, 2160)).unwrap();
+        assert!((s - 56.25).abs() < 0.01);
+        let s = fit_scale(&tall, "half", (1920, 1080)).unwrap();
+        assert!((s - 56.25).abs() < 0.01);
+        assert_eq!(fit_scale(&tall, "half", (1080, 1920)), None, "already the frame size");
+        // a wide strip bigger than the frame is scaled down too
+        let wide = TemplateInfo { width: 3840, height: 608, ..Default::default() };
+        assert_eq!(resolution_for(&wide, Some((1920, 1080))), "half");
+        assert_eq!(fit_scale(&wide, "half", (1920, 1080)), None);
+        let s = fit_scale(&wide, "full", (1920, 1080)).unwrap();
+        assert!((s - 50.0).abs() < 0.01);
         // hostile sizes
         let zero = TemplateInfo::default();
         assert_eq!(fit_scale(&zero, "full", (1920, 1080)), None);
