@@ -227,7 +227,14 @@ impl FilmcraftApp {
                 DockAction::Close(panel) => {
                     let _ = self.dock_command(&ctx, Action::Close { panel });
                 }
-                DockAction::Focus(panel) => self.ui.focused = panel,
+                DockAction::Focus(panel) => {
+                    self.ui.focused = panel;
+                    // Z4K: clicking the Timeline brings the Program monitor to the front of its frame
+                    if panel == PanelKind::Timeline && self.ui.dock.contains(PanelKind::Program) && !self.ui.dock.is_visible(PanelKind::Program) {
+                        let _ = self.dock_command(&ctx, Action::Activate { panel: PanelKind::Program });
+                        self.ui.focused = panel;
+                    }
+                }
                 DockAction::BeginDrag(panel) => {
                     ctx.data_mut(|data| data.insert_temp(drag_id(), panel));
                 }
