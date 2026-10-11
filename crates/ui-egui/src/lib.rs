@@ -53,6 +53,7 @@ pub mod source_playback;
 pub mod state;
 pub mod theme;
 pub mod widgets;
+mod z4k_select_on_focus;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1955,6 +1956,7 @@ impl eframe::App for FilmcraftApp {
         }
         self.error_window(ui.ctx());
         let ctx = ui.ctx().clone();
+        z4k_select_on_focus::after_frame(&ctx); // Z4K: clicking into a field selects its value
         self.last_ui_time = ctx.input(|i| i.time);
         if !self.synthetic.is_empty() {
             ctx.request_repaint();
