@@ -433,10 +433,54 @@ fn item_sizes(project: &str) -> Result<HashMap<u64, (f64, f64)>> {
     Ok(m)
 }
 
+/// Render resolution for a sequence frame: "full", "half" or "quarter" — the smallest that still
+/// covers the frame (a 4K template in an HD sequence renders at half size).
+pub fn resolution_for(t: &TemplateInfo, frame: Option<(u32, u32)>) -> &'static str {
+    let Some((w, h)) = frame else { return "full" };
+    let (tw, th) = (t.width.max(1) as f64, t.height.max(1) as f64);
+    let r = (w as f64 / tw).max(h as f64 / th);
+    if r <= 0.25 {
+        "quarter"
+    } else if r <= 0.5 {
+        "half"
+    } else {
+        "full"
+    }
+}
+
+fn res_factor(res: &str) -> f64 {
+    match res {
+        "quarter" => 0.25,
+        "half" => 0.5,
+        _ => 1.0,
+    }
+}
+
+/// The active sequence's frame size.
+pub fn sequence_size(s: &Session) -> Option<(u32, u32)> {
+    s.active_sequence().map(|q| (q.settings.width, q.settings.height))
+}
+
+/// Scale (%) that fits a render of a frame-shaped template (same aspect ratio as the sequence)
+/// to the sequence frame; None for other templates (they are placed at 100%, centred).
+pub fn fit_scale(t: &TemplateInfo, res: &str, frame: (u32, u32)) -> Option<f64> {
+    let (tw, th) = (t.width as f64, t.height as f64);
+    let (w, h) = (frame.0 as f64, frame.1 as f64);
+    if tw <= 0.0 || th <= 0.0 || w <= 0.0 || h <= 0.0 || ((tw / th) / (w / h) - 1.0).abs() > 0.01 {
+        return None;
+    }
+    let scale = w / (tw * res_factor(res)) * 100.0;
+    (scale.is_finite() && (scale - 100.0).abs() > 0.01).then_some(scale)
+}
+
 /// Render template `t` with `values` (control name → text, or image path for media controls)
-/// into `out_dir`; returns the movie (ProRes 4444 with alpha). Reuses an earlier identical render.
+/// at `res` ("full", "half" or "quarter") into `out_dir`; returns the movie (ProRes 4444 with alpha). Reuses an earlier identical render.
 /// Runs EffectCraft's command-line tool several times; call it off the UI thread.
-pub fn render_job(t: &TemplateInfo, values: &BTreeMap<String, String>, out_dir: &Path) -> Result<PathBuf> {
+pub fn render_job(t: &TemplateInfo, values: &BTreeMap<String, String>, res: &str, out_dir: &Path) -> Result<PathBuf> {
+    let res = match res {
+        "half" | "quarter" => res,
+        _ => "full",
+    };
     for (k, v) in values {
         let c = t.control(k).ok_or_else(|| bad("graphics.ecTemplate", format!("the template has no control `{k}`")))?;
         if v.len() > MAX_TEXT {
@@ -449,19 +493,22 @@ pub fn render_job(t: &TemplateInfo, values: &BTreeMap<String, String>, out_dir: 
     if t.comp_name.is_empty() {
         return Err(other(format!("{} has no composition", t.path)));
     }
-    let key = render_key(t, values);
+    let mut key = render_key(t, values);
+    if res != "full" {
+        key = format!("{:016x}", fnv(u64::from_str_radix(&key, 16).unwrap_or(0), res.as_bytes()));
+    }
     let out = out_dir.join(format!("{} {}.mov", safe_name(&t.name), &key[..12.min(key.len())]));
     if out.metadata().is_ok_and(|m| m.len() > 0) {
         return Ok(out);
     }
     let job = out_dir.join(".jobs").join(&key);
     std::fs::create_dir_all(&job).map_err(|e| other(format!("can't create {}: {e}", job.display())))?;
-    let r = render_in(t, values, &job, &out);
+    let r = render_in(t, values, res, &job, &out);
     let _ = std::fs::remove_dir_all(&job);
     r.map(|_| out)
 }
 
-fn render_in(t: &TemplateInfo, values: &BTreeMap<String, String>, job: &Path, out: &Path) -> Result<()> {
+fn render_in(t: &TemplateInfo, values: &BTreeMap<String, String>, res: &str, job: &Path, out: &Path) -> Result<()> {
     let project = job.join("job.ecproj");
     let ps = project.to_string_lossy().to_string();
     let create = json!({"path": t.path, "projectPath": ps}).to_string();
@@ -524,6 +571,8 @@ fn render_in(t: &TemplateInfo, values: &BTreeMap<String, String>, job: &Path, ou
         "--work-area",
         "--audio",
         "on",
+        "--resolution",
+        res,
         "--project",
         &ps,
     ])?;
@@ -633,7 +682,8 @@ fn rendered(s: &Session, cmd: &str, p: &Value, t: &TemplateInfo, values: &BTreeM
         }
         return Ok(r.to_string());
     }
-    Ok(render_job(t, values, &render_dir(s)?)?.to_string_lossy().to_string())
+    let res = resolution_for(t, sequence_size(s));
+    Ok(render_job(t, values, res, &render_dir(s)?)?.to_string_lossy().to_string())
 }
 
 /// Keep only the first of the undo steps made since `before`, under `label`.
@@ -746,6 +796,12 @@ fn place(s: &mut Session, t: &TemplateInfo, values: &BTreeMap<String, String>, m
     let item = u64_p(&r, "item").map(ItemId).ok_or_else(|| other("the render was not placed"))?;
     let clip = u64_p(&r, "clip");
     let mut clips: Vec<ClipId> = clip.map(ClipId).into_iter().collect();
+    // a frame-shaped template fills the frame whatever the sequence size
+    if let (Some(c), Some(frame)) = (clip, sequence_size(s))
+        && let Some(scale) = fit_scale(t, resolution_for(t, Some(frame)), frame)
+    {
+        s.execute("effects.setParam", json!({"clip": c, "effect": "motion", "param": "scale", "value": scale}))?;
+    }
     // the template's sound goes on a free audio track (a new one if none is free), linked
     if let Some(c) = clip.map(ClipId)
         && s.project.item(item).is_some_and(|i| i.has_audio())
@@ -1003,6 +1059,28 @@ mod tests {
         assert_eq!(found, ["A.ectemplate", "YouTube CTA/CTA.ectemplate", "x/y/z/Deep.ECTEMPLATE"]);
         assert!(find_templates(&dir.join("missing")).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn frame_shaped_templates_render_at_the_sequence_size_and_fill_the_frame() {
+        let t = TemplateInfo { width: 3840, height: 2160, ..Default::default() };
+        assert_eq!(resolution_for(&t, Some((3840, 2160))), "full");
+        assert_eq!(resolution_for(&t, Some((1920, 1080))), "half");
+        assert_eq!(resolution_for(&t, Some((960, 540))), "quarter");
+        assert_eq!(resolution_for(&t, Some((2560, 1440))), "full");
+        assert_eq!(resolution_for(&t, None), "full");
+        assert_eq!(fit_scale(&t, "full", (3840, 2160)), None, "already the frame size");
+        assert_eq!(fit_scale(&t, "half", (1920, 1080)), None);
+        let s = fit_scale(&t, "full", (2560, 1440)).unwrap();
+        assert!((s - 66.6667).abs() < 0.01);
+        // not frame-shaped (a 1920×608 strip): placed as it is
+        let strip = TemplateInfo { width: 1920, height: 608, ..Default::default() };
+        assert_eq!(fit_scale(&strip, "full", (3840, 2160)), None);
+        // hostile sizes
+        let zero = TemplateInfo::default();
+        assert_eq!(fit_scale(&zero, "full", (1920, 1080)), None);
+        assert_eq!(fit_scale(&t, "full", (0, 0)), None);
+        assert_eq!(resolution_for(&zero, Some((1920, 1080))), "full");
     }
 
     #[test]

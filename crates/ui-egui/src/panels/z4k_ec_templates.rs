@@ -189,11 +189,12 @@ fn start(app: &mut FilmcraftApp, ctx: &egui::Context, info: TemplateInfo, values
         }
         sh.running = Some(info.name.clone());
     }
+    let res = ec::resolution_for(&info, ec::sequence_size(&app.session));
     app.ui.status = format!("Rendering {} with EffectCraft…", info.name);
     let shared = v.shared.clone();
     let ctx2 = ctx.clone();
     std::thread::spawn(move || {
-        let r = std::panic::catch_unwind(|| ec::render_job(&info, &values, &dir).map_err(|e| e.to_string()))
+        let r = std::panic::catch_unwind(|| ec::render_job(&info, &values, res, &dir).map_err(|e| e.to_string()))
             .unwrap_or_else(|_| Err("the EffectCraft render stopped unexpectedly".into()));
         let mut sh = shared.lock().unwrap_or_else(|e| e.into_inner());
         sh.running = None;
