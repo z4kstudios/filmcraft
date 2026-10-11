@@ -137,13 +137,15 @@ pub fn essential_graphics(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect)
     let tab = match app.ui.gfx_templates.tab.as_str() {
         "browse" => "browse",
         "edit" => "edit",
+        "effectcraft" => "effectcraft", // Z4K
         _ if crate::panels::graphics::graphic_selected(app) => "edit",
+        _ if crate::panels::z4k_ec_templates::clip_selected(app) => "effectcraft", // Z4K
         _ => "browse",
     };
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), 30.0));
     ui.painter().line_segment([head.left_bottom(), head.right_bottom()], Stroke::new(1.0, t.separator));
     let mut elems: Elems = Vec::new();
-    for (i, (id, label)) in [("browse", tl!("Browse")), ("edit", tl!("Edit"))].into_iter().enumerate() {
+    for (i, (id, label)) in [("browse", tl!("Browse")), ("edit", tl!("Edit")), ("effectcraft", "EffectCraft")].into_iter().enumerate() {
         let r = Rect::from_min_size(pos2(head.min.x + 8.0 + i as f32 * 80.0, head.min.y), vec2(76.0, 30.0));
         if tab_button(ui, r, label, tab == id, &t).clicked() {
             app.ui.gfx_templates.tab = id.into();
@@ -156,6 +158,8 @@ pub fn essential_graphics(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect)
     let body = Rect::from_min_max(pos2(rect.min.x, head.max.y + 1.0), rect.max);
     if tab == "edit" {
         crate::panels::graphics::properties(app, ui, body);
+    } else if tab == "effectcraft" {
+        crate::panels::z4k_ec_templates::panel(app, ui, body); // Z4K
     } else {
         browse(app, ui, body);
     }

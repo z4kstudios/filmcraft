@@ -54,6 +54,8 @@ pub mod sync;
 pub mod transcript;
 pub mod trim;
 pub mod voiceover;
+/// Z4K: EffectCraft templates in FilmCraft.
+pub mod z4k_ec_templates;
 
 use std::sync::Arc;
 

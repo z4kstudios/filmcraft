@@ -54,6 +54,8 @@ pub mod trim_monitor;
 pub mod tts;
 pub mod voiceover;
 pub mod workspaces;
+/// Z4K: EffectCraft templates in Essential Graphics.
+pub mod z4k_ec_templates;
 
 use egui::{Align2, Color32, Rect};
 use filmcraft_project::ItemId;
