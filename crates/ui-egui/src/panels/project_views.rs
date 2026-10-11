@@ -156,6 +156,42 @@ pub fn click_modifiers(ui: &egui::Ui) -> egui::Modifiers {
     })
 }
 
+// Z4K: Shift-click range selection, like Premiere (upstream toggled one item, like Cmd-click).
+fn z4k_anchor_id(v: &View) -> egui::Id {
+    egui::Id::new((&v.prefix, "z4k-select-anchor"))
+}
+
+/// Z4K: remember the item a plain or Cmd click selected, where the next Shift-click range starts.
+fn z4k_set_anchor(ui: &egui::Ui, v: &View, id: ItemId) {
+    ui.data_mut(|d| d.insert_temp(z4k_anchor_id(v), id.0));
+}
+
+/// Z4K: the selection after Shift-clicking `id`: every item shown between the anchor (else the last
+/// selected item) and `id`, in display order; `add` (Cmd+Shift) keeps the current selection too.
+fn z4k_shift_range(app: &FilmcraftApp, ui: &egui::Ui, v: &View, filter: &str, id: ItemId, add: bool) -> Vec<ItemId> {
+    let order = items_in_view(app, v, filter);
+    let current = &app.session.state.project_selection;
+    let anchor = ui.data(|d| d.get_temp::<u64>(z4k_anchor_id(v))).map(ItemId).filter(|a| order.contains(a)).or_else(|| current.last().copied());
+    z4k_range(&order, anchor, id, if add { current } else { &[] })
+}
+
+/// Z4K: `base` plus the items of `order` from `anchor` to `id` (just `id` without a usable anchor).
+fn z4k_range(order: &[ItemId], anchor: Option<ItemId>, id: ItemId, base: &[ItemId]) -> Vec<ItemId> {
+    let mut sel = base.to_vec();
+    let a = anchor.and_then(|a| order.iter().position(|x| *x == a));
+    let b = order.iter().position(|x| *x == id);
+    let range: Vec<ItemId> = match (a, b) {
+        (Some(a), Some(b)) => order.get(a.min(b)..=a.max(b)).map(<[ItemId]>::to_vec).unwrap_or_else(|| vec![id]),
+        _ => vec![id],
+    };
+    for i in range {
+        if !sel.contains(&i) {
+            sel.push(i);
+        }
+    }
+    sel
+}
+
 /// Click / double-click / drag / context menu of an item (row, card).
 pub fn item_interactions(
     app: &mut FilmcraftApp,
@@ -166,18 +202,25 @@ pub fn item_interactions(
     actions: &mut Actions,
     drag: bool,
     menu: bool,
+    v: &View,     // Z4K: for Shift-click ranges
+    filter: &str, // Z4K
 ) {
     if resp.clicked() {
         let mods = click_modifiers(ui);
         let mut sel = app.session.state.project_selection.clone();
-        if mods.command || mods.shift {
+        if mods.shift {
+            // Z4K: Shift-click selects the range from the anchor, Cmd+Shift adds it
+            sel = z4k_shift_range(app, ui, v, filter, id, mods.command);
+        } else if mods.command {
             if let Some(p) = sel.iter().position(|x| *x == id) {
                 sel.remove(p);
             } else {
                 sel.push(id);
             }
+            z4k_set_anchor(ui, v, id);
         } else {
             sel = vec![id];
+            z4k_set_anchor(ui, v, id);
         }
         app.ui.project_panel.selected_bin = None;
         actions.push(("project.select".into(), json!({"items": sel.iter().map(|i| i.0).collect::<Vec<_>>()})));
@@ -743,7 +786,7 @@ fn list_bin(app: &mut FilmcraftApp, ui: &mut egui::Ui, bin: &Bin, depth: usize, 
         }
         app.auto.add(&format!("{}.item.{}", v.prefix, id.0), r.intersect(ui.clip_rect()), &it.name);
         slow_click_rename(app, ui, &resp, name_r, id, selected);
-        item_interactions(app, ui, &resp, id, &it.kind, actions, true, true);
+        item_interactions(app, ui, &resp, id, &it.kind, actions, true, true, v, filter);
     }
 }
 
@@ -946,7 +989,7 @@ pub fn icon_view(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, v: &View
                     note_hit(ui, v, id, r);
                     let name_r = Rect::from_min_max(pos2(r.min.x, r.min.y + th_h), r.max);
                     slow_click_rename(app, ui, &resp, name_r, id, was_selected);
-                    item_interactions(app, ui, &resp, id, &kind, actions, true, true);
+                    item_interactions(app, ui, &resp, id, &kind, actions, true, true, v, filter);
                 }
             }
         }
@@ -1016,7 +1059,7 @@ pub fn freeform_view(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, v: &
                 ui.painter().text(br.center(), Align2::CENTER_CENTER, format!("×{n}"), Tokens::ui(10.0), Color32::WHITE);
                 app.auto.add(&format!("{}.stack.{s}", v.prefix), br, &format!("Stack of {n}"));
             }
-            item_interactions(app, ui, &resp, ItemId(c.item), &kind, actions, false, false);
+            item_interactions(app, ui, &resp, ItemId(c.item), &kind, actions, false, false, v, filter);
             if resp.dragged() {
                 let total = dragging.filter(|d| d.0 == c.item).map(|d| d.1).unwrap_or_default() + resp.drag_delta();
                 ui.ctx().data_mut(|d| d.insert_temp(drag_key, (c.item, total)));
@@ -1159,6 +1202,22 @@ mod clear_tests {
     use super::clear_params;
     use filmcraft_project::ItemId;
     use serde_json::json;
+
+    #[test]
+    fn z4k_shift_click_selects_the_range_from_the_anchor() {
+        use filmcraft_project::ItemId;
+        let order: Vec<ItemId> = (1..=6).map(ItemId).collect();
+        let ids = |v: &[u64]| v.iter().map(|i| ItemId(*i)).collect::<Vec<_>>();
+        // down and up from the anchor
+        assert_eq!(super::z4k_range(&order, Some(ItemId(2)), ItemId(5), &[]), ids(&[2, 3, 4, 5]));
+        assert_eq!(super::z4k_range(&order, Some(ItemId(5)), ItemId(2), &[]), ids(&[2, 3, 4, 5]));
+        // Cmd+Shift adds the range to the selection
+        assert_eq!(super::z4k_range(&order, Some(ItemId(4)), ItemId(5), &ids(&[1])), ids(&[1, 4, 5]));
+        // no anchor, or one that isn't shown: just the clicked item
+        assert_eq!(super::z4k_range(&order, None, ItemId(3), &[]), ids(&[3]));
+        assert_eq!(super::z4k_range(&order, Some(ItemId(99)), ItemId(3), &[]), ids(&[3]));
+        assert_eq!(super::z4k_range(&[], Some(ItemId(1)), ItemId(3), &[]), ids(&[3]));
+    }
 
     #[test]
     fn clear_falls_back_to_the_selected_bin() {
