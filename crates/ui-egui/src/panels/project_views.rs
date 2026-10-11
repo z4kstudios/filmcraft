@@ -429,6 +429,17 @@ fn rename_field(app: &mut FilmcraftApp, ui: &mut egui::Ui, r: Rect, item: Option
     if ui.ctx().data(|d| d.get_temp::<egui::Id>(shown)) != Some(id) {
         ui.ctx().data_mut(|d| d.insert_temp(shown, id));
         resp.request_focus();
+        // Z4K: then select the whole name, so typing replaces "New Bin" (Finder / Premiere)
+        ui.ctx().data_mut(|d| d.insert_temp(id.with("select-all"), true));
+        ui.ctx().request_repaint();
+    }
+    // egui collapses a selection in a field that doesn't have focus yet, so select once it has it
+    if resp.has_focus() && ui.ctx().data_mut(|d| d.remove_temp::<bool>(id.with("select-all"))).is_some() {
+        let mut st = egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
+        let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
+        st.cursor.set_char_range(Some(all));
+        st.store(ui.ctx(), id);
+        ui.ctx().request_repaint();
     }
     if let Some(rn) = app.ui.project_panel.rename.as_mut() {
         rn.text = text;
