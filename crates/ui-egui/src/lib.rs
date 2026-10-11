@@ -116,6 +116,9 @@ pub struct HostHooks {
     pub cursor_screen_position: Option<Box<dyn Fn() -> Option<(i32, i32)>>>,
     pub pick_save: Option<Box<dyn FnMut(&str) -> Option<String>>>,
     pub pick_open_project: Option<Box<dyn FnMut() -> Option<String>>>,
+    /// Z4K: files the operating system asked the app to open since the last frame (a
+    /// double-clicked project in the Finder): projects open, other files are imported.
+    pub opened_files: Option<Box<dyn FnMut() -> Vec<String>>>,
     /// Save dialog with a filter: (filter name, extensions, suggested file name) → path.
     pub pick_save_as: Option<Box<dyn FnMut(&str, &[&str], &str) -> Option<String>>>,
     /// The active keyboard shortcuts changed: update native menu key equivalents.
@@ -1311,6 +1314,21 @@ impl FilmcraftApp {
 
     /// Import dropped files. With Timeline ▸ drop imports to the timeline, the new items are also
     /// queued to be placed at the pointer (see `timeline::interact`).
+    /// Z4K: open the files the operating system asked for (see `Hooks::opened_files`).
+    fn open_requested_files(&mut self) {
+        let Some(files) = self.hooks.opened_files.as_mut().map(|f| f()) else { return };
+        for path in files {
+            let r = if path.to_ascii_lowercase().ends_with(".fcproj") {
+                self.session.execute("file.open", json!({"path": path}))
+            } else {
+                self.session.execute("file.import", json!({"paths": [path]}))
+            };
+            if let Err(e) = r {
+                self.ui.status = e.to_string();
+            }
+        }
+    }
+
     fn handle_drops(&mut self, ctx: &egui::Context) {
         // While files hover, the OS sends no cursor events: poll the cursor each frame to draw the Timeline preview.
         let hovering = ctx.input(|i| i.raw.hovered_files.len());
@@ -1640,6 +1658,7 @@ impl FilmcraftApp {
         }
         self.sync_timeline_view();
         self.handle_drops(&ctx);
+        self.open_requested_files(); // Z4K
         if let Some(rx) = self.command_inbox.take() {
             while let Ok(id) = rx.try_recv() {
                 if self.control_input_only {

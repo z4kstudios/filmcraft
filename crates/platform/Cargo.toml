@@ -33,6 +33,9 @@ filmcraft-time = { workspace = true }
 log = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Z4K: open-documents Apple Event (src/open_documents.rs)
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSNotification", "NSString", "NSURL", "NSObject"] }
 objc2-core-foundation = "0.3.2"
 objc2-core-media = "0.3.2"
 objc2-core-video = "0.3.2"

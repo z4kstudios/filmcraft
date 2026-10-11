@@ -114,6 +114,9 @@ fn main() -> eframe::Result {
         }
     }
     app_nap::disable();
+    // Z4K: receive files the Finder asks to open (a double-clicked project), including the ones
+    // the app is launched with
+    filmcraft_platform::open_documents::install();
     #[cfg(target_os = "linux")]
     dev_icon::ensure_dev_desktop_entry();
     // Panics anywhere go to <data dir>/Logs/crash-<day>.log with a backtrace; the UI pass and
@@ -241,6 +244,11 @@ fn main() -> eframe::Result {
             app.hooks.pick_folder_at =
                 Some(Box::new(|dir: &str| rfd::FileDialog::new().set_directory(dir).pick_folder().map(|p| p.to_string_lossy().into_owned())));
             app.hooks.open_path = Some(Box::new(open_path));
+            app.hooks.opened_files = Some(Box::new(filmcraft_platform::open_documents::take)); // Z4K
+            {
+                let ctx = cc.egui_ctx.clone();
+                filmcraft_platform::open_documents::set_waker(Box::new(move || ctx.request_repaint()));
+            }
             // Help menu, About and Discord links (#642): eframe is built without its `links`
             // feature, so `ctx.open_url` does nothing on the desktop. Detached, so a launcher
             // that waits for the browser never freezes the UI.
