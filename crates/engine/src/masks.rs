@@ -247,6 +247,7 @@ fn add(s: &mut Session, p: &Value) -> Result<Value> {
         e.masks.push(Mask::new(name.clone(), path));
         let mi = e.masks.len() - 1;
         st.selected_mask = Some(MaskSel { clip, effect: ei, mask: mi });
+        st.selected_effect = None;
         Ok((ei, mi, name))
     })?;
     Ok(json!({"clip": clip.0, "effect": ei, "mask": mi, "name": name}))
@@ -511,6 +512,7 @@ fn select(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("masks.select", format!("no mask {mi}")));
     }
     s.state.selected_mask = Some(MaskSel { clip, effect: ei, mask: mi });
+    s.state.selected_effect = None;
     Ok(Value::Null)
 }
 
