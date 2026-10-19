@@ -1271,6 +1271,7 @@
 	59.94 fps Non Drop-Frame	59,94 fps Non Drop-Frame
 	ASC CDL	ASC CDL
 	Accessible color contrast	Kontras warna yang aksesibel
+	Animate zoom, scrolling and menus	Animasikan zoom, gulir, dan menu
 	Action-Safe Margin	Margin Aman Aksi
 	Active Monitor	Monitor Aktif
 	Add	Tambah
@@ -3575,3 +3576,6 @@
 	Appearance Settings…	Pengaturan Tampilan…
 	Add to favorites	Tambahkan ke favorit
 	Remove from favorites	Hapus dari favorit
+# View ▸ Reset Interface Zoom (#2253).
+	Reset Interface Zoom	Atur Ulang Zoom Antarmuka
+	Track Color	Warna Trek

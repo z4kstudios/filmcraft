@@ -2864,10 +2864,17 @@ fn build() -> Vec<CommandSpec> {
             "Track Settings",
             [],
             None,
-            r#"{"track":"V1"|id,"locked":bool?,"syncLock":bool?,"enabled":bool?,"muted":bool?,"solo":bool?,"name":str?,"volumeDb":f64?,"pan":f64?}"#,
+            r#"{"track":"V1"|id,"locked":bool?,"syncLock":bool?,"enabled":bool?,"muted":bool?,"solo":bool?,"name":str?,"volumeDb":f64?,"pan":f64?,"label":"Violet|Iris|…"|""|null?}"#,
             has_seq,
             |s, p| {
                 let tr = track_p(s, p, "track", "timeline.setTrack")?.ok_or_else(|| bad("timeline.setTrack", "need `track`"))?;
+                // colour label: a label name, or "" / "None" / null for no colour
+                let label = match p.get("label") {
+                    None => None,
+                    Some(Value::Null) => Some(None),
+                    Some(Value::String(n)) if n.is_empty() || n.eq_ignore_ascii_case("none") => Some(None),
+                    Some(v) => Some(Some(v.as_str().and_then(Label::from_name).ok_or_else(|| bad("timeline.setTrack", format!("unknown label {v}")))?)),
+                };
                 let p = p.clone();
                 s.edit_sequence("Track Settings", |q, _, _| {
                     let t = q.track_mut(tr).ok_or(filmcraft_edit::EditError::NoTrack(tr))?;
@@ -2894,6 +2901,9 @@ fn build() -> Vec<CommandSpec> {
                     }
                     if let Some(v) = f64_p(&p, "pan") {
                         t.pan = v.clamp(-100.0, 100.0);
+                    }
+                    if let Some(l) = label {
+                        t.label = l;
                     }
                     Ok(())
                 })?;
@@ -3115,6 +3125,14 @@ fn build() -> Vec<CommandSpec> {
                     _ => None,
                 }
                 .ok_or_else(|| bad("effects.toggleAnimation", "no such effect"))?;
+                // a parameter an older instance lacks (added to the effect later) starts from its
+                // default, as the UI shows it, without touching an existing one
+                if p.get("mask").is_none_or(Value::is_null)
+                    && !e.params.contains_key(&pid)
+                    && let Some(d) = e.def().and_then(|d| d.param(&pid))
+                {
+                    e.params.insert(pid.clone(), filmcraft_project::Param::new(d.default.clone()));
+                }
                 crate::masks::target_param(e, p, &pid).ok_or_else(|| bad("effects.toggleAnimation", "no such param"))?.toggle_animation(mt);
                 Ok(())
             })?;
@@ -4264,6 +4282,7 @@ pub fn inspect_sequence(s: &Session, id: ItemId, q: &filmcraft_project::Sequence
     let tr = |t: &filmcraft_project::Track| {
         json!({
             "id": t.id.0, "name": t.name, "locked": t.locked, "syncLock": t.sync_lock, "enabled": t.enabled, "muted": t.muted, "solo": t.solo,
+            "label": t.label.map(|l| l.name()),
             "items": t.items.iter().map(|i| json!({
                 "clip": i.id.0, "item": i.item.0, "name": i.name, "start": i.start.0, "duration": i.duration.0,
                 "startFrame": rate.frame_at(i.start), "durationFrames": rate.frame_at(i.duration), "sourceIn": i.source_in.0, "speed": i.speed, "reverse": i.reverse,

@@ -230,3 +230,87 @@ fn shadow_color_drag_is_one_undo_step() {
     d.exec("edit.undo", json!({}));
     assert_eq!(color(&mut d), before, "one undo restores the original color");
 }
+
+/// Character ranges use setCharStyle, but must share the same one-gesture undo rule as a layer.
+#[test]
+fn selected_character_size_drag_is_one_undo_step() {
+    let mut d = Driver::demo();
+    d.ok("ui.set", json!({"workspace":"Captions and Graphics","tool":"Type"}));
+    d.exec("playhead.set", json!({"seconds":2}));
+    d.frames(3);
+    let p = d.rect("program.picture");
+    d.ok("ui.click", json!({"x":p[0]+p[2]*0.2,"y":p[1]+p[3]*0.35}));
+    d.ok("ui.type", json!({"text":"Undo drag test"}));
+    d.ok("ui.key", json!({"key":"Cmd+A"}));
+    d.frames(3);
+    let before = d.harness.state().session.project.clone();
+    let n = d.harness.state().session.history.undo.len();
+    let r = d.rect("graphics.prop.size");
+    d.ok("ui.drag", json!({"from":{"x":r[0]+r[2]/2.0,"y":r[1]+r[3]/2.0},"to":{"x":r[0]+r[2]/2.0+80.0,"y":r[1]+r[3]/2.0},"steps":8}));
+    d.frames(3);
+    assert_eq!(d.harness.state().session.history.undo.len(), n + 1);
+    let after = d.harness.state().session.project.clone();
+    assert_ne!(*after, *before);
+    d.exec("edit.undo", json!({}));
+    assert_eq!(*d.harness.state().session.project, *before);
+    d.exec("edit.redo", json!({}));
+    assert_eq!(*d.harness.state().session.project, *after);
+}
+
+/// The Properties panel's stopwatches animate a layer property (#2358): Tracking (letter
+/// spacing) gets keyframes from the Essential Graphics panel itself, a change at another time
+/// adds a keyframe there instead of changing the value everywhere, and the stopwatch turns
+/// keyframing off again.
+#[test]
+fn the_tracking_stopwatch_animates_letter_spacing() {
+    let mut d = Driver::demo();
+    d.ok("ui.set", json!({"workspace": "Captions and Graphics"}));
+    d.exec("playhead.set", json!({"seconds": 0.0}));
+    let r = d.exec("graphics.newText", json!({"text": "Title", "seconds": 4}));
+    let clip = r["clip"].as_u64().unwrap();
+    d.exec("graphics.selectLayer", json!({"clip": clip, "layers": [0]}));
+    d.frames(4);
+    for _ in 0..20 {
+        if d.rect("graphics.prop.tracking")[1] < 800.0 {
+            break;
+        }
+        d.ok("ui.scroll", json!({"id": "graphics.prop.scale", "dy": -200.0}));
+        d.frames(2);
+    }
+    let keys = |d: &mut Driver| -> Vec<(i64, f64)> {
+        let s = &d.harness.state().session;
+        let (_, it) = s.active_sequence().unwrap().find_item(filmcraft_project::ClipId(clip)).unwrap();
+        let e = it.effects.iter().find(|e| e.effect == "graphic_text").unwrap();
+        e.params.get("tracking").map(|p| p.keyframes.iter().map(|k| (k.time.0, k.value.as_f64().unwrap())).collect()).unwrap_or_default()
+    };
+    assert!(keys(&mut d).is_empty());
+    d.ok("ui.click", json!({"id": "graphics.prop.tracking.stopwatch"}));
+    d.frames(2);
+    assert_eq!(keys(&mut d).len(), 1, "the stopwatch sets a keyframe at the playhead");
+    // two seconds later, drag the Tracking number: a second keyframe, the first stays
+    d.exec("playhead.set", json!({"seconds": 2.0}));
+    d.frames(2);
+    let n = d.rect("graphics.prop.tracking");
+    let (cx, cy) = (n[0] + n[2] / 2.0, n[1] + n[3] / 2.0);
+    d.ok("ui.drag", json!({"from": {"x": cx, "y": cy}, "to": {"x": cx + 60.0, "y": cy}, "steps": 6}));
+    d.frames(4);
+    let k = keys(&mut d);
+    assert_eq!(k.len(), 2, "{k:?}");
+    // the clip starts at 0, where the first keyframe was set, so the second one sits at the playhead
+    let playhead = d.harness.state().session.playhead().0;
+    assert_eq!((k[0].0, k[1].0), (0, playhead), "the keyframes are where the playhead was: {k:?}");
+    assert_eq!(k[0].1, 0.0, "the first keyframe keeps its value: {k:?}");
+    assert!(k[1].1 > 10.0, "the new keyframe has the dragged value: {k:?}");
+    // letter spacing now animates: halfway between the keyframes the value is in between
+    let mid = {
+        let s = &d.harness.state().session;
+        let (_, it) = s.active_sequence().unwrap().find_item(filmcraft_project::ClipId(clip)).unwrap();
+        let e = it.effects.iter().find(|e| e.effect == "graphic_text").unwrap();
+        e.param("tracking").unwrap().value_at(filmcraft_time::Tick((k[0].0 + k[1].0) / 2)).as_f64().unwrap()
+    };
+    assert!(mid > 0.0 && mid < k[1].1, "{mid} between 0 and {}", k[1].1);
+    d.ok("ui.click", json!({"id": "graphics.prop.tracking.stopwatch"}));
+    d.frames(2);
+    assert!(keys(&mut d).is_empty(), "the stopwatch turns keyframing off");
+    d.shot("tracking-stopwatch");
+}

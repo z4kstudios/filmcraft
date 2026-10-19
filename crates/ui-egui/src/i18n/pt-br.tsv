@@ -1268,6 +1268,7 @@
 	59.94 fps Non Drop-Frame	59,94 fps sem drop-frame
 	ASC CDL	ASC CDL
 	Accessible color contrast	Contraste de cores acessível
+	Animate zoom, scrolling and menus	Animar zoom, rolagem e menus
 	Action-Safe Margin	Margem de segurança de ação
 	Active Monitor	Monitor ativo
 	Add	Adicionar
@@ -3579,3 +3580,6 @@
 
 # The native macOS application menu (Settings…).
 	Settings	Preferências
+# View ▸ Reset Interface Zoom (#2253).
+	Reset Interface Zoom	Redefinir zoom da interface
+	Track Color	Cor da trilha
