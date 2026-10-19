@@ -3590,3 +3590,6 @@
 # View ▸ Reset Interface Zoom (#2253).
 	Reset Interface Zoom	重置界面缩放
 	Track Color	轨道颜色
+	Open a sequence to search its graphics	打开序列以搜索其中的图形
+	No text graphics in this sequence. Add text with the Type tool.	此序列中没有文本图形。请用文字工具添加文本。
+	No matching text.	没有匹配的文本。

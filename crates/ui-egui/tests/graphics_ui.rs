@@ -314,3 +314,87 @@ fn the_tracking_stopwatch_animates_letter_spacing() {
     assert!(keys(&mut d).is_empty(), "the stopwatch turns keyframing off");
     d.shot("tracking-stopwatch");
 }
+
+/// Text panel ▸ Graphics (#1487): the text of every text layer in the sequence, in timeline
+/// order, searchable; the timecode goes to the clip and selects the layer, and the text edits in
+/// place as one undo step.
+#[test]
+fn the_text_panels_graphics_tab_lists_and_edits_graphic_text() {
+    let mut d = Driver::demo();
+    d.ok("ui.set", json!({"workspace": "Captions and Graphics"}));
+    let mut clips = Vec::new();
+    for (sec, text) in [(6.0, "Closing credits"), (1.0, "Opening title")] {
+        d.exec("playhead.set", json!({"seconds": sec}));
+        let r = d.exec("graphics.newText", json!({"text": text, "seconds": 2}));
+        clips.push(r["clip"].as_u64().unwrap());
+    }
+    let (credits, title) = (clips[0], clips[1]);
+    d.exec("playhead.set", json!({"seconds": 10.0}));
+    d.ok("ui.click", json!({"id": "text.tab.Graphics"}));
+    d.frames(3);
+    let rows = |d: &mut Driver| -> Vec<String> {
+        let v = d.ok("ui.elements", json!({"prefix": "text.graphics."}));
+        v.as_array().unwrap().iter().filter(|e| e["id"].as_str().unwrap().ends_with(".row")).map(|e| e["label"].as_str().unwrap_or("").to_string()).collect()
+    };
+    assert_eq!(rows(&mut d), ["Opening title", "Closing credits"], "in timeline order");
+    // search
+    d.ok("ui.click", json!({"id": "text.graphics.search"}));
+    d.ok("ui.type", json!({"text": "CRED"}));
+    d.frames(3);
+    assert_eq!(rows(&mut d), ["Closing credits"]);
+    d.ok("ui.key", json!({"key": "A", "command": true}));
+    d.ok("ui.key", json!({"key": "Backspace"}));
+    d.frames(3);
+    assert_eq!(rows(&mut d).len(), 2);
+    // the timecode goes to the clip and selects its layer
+    d.ok("ui.click", json!({"id": format!("text.graphics.{credits}.0.goto")}));
+    d.frames(3);
+    let start = d.harness.state().session.active_sequence().unwrap().find_item(filmcraft_project::ClipId(credits)).unwrap().1.start;
+    assert_eq!(d.harness.state().session.playhead(), start);
+    assert_eq!(d.harness.state().session.state.selection, vec![filmcraft_project::ClipId(credits)]);
+    assert_eq!(d.harness.state().session.state.graphic_layers, vec![0]);
+    // edit the title's text in place
+    let undo0 = d.exec("history.list", json!({}))["undo"].as_array().unwrap().len();
+    d.ok("ui.click", json!({"id": format!("text.graphics.{title}.0.text")}));
+    d.ok("ui.key", json!({"key": "A", "command": true}));
+    d.ok("ui.type", json!({"text": "Night Drive"}));
+    d.ok("ui.click", json!({"id": "text.graphics.search"}));
+    d.frames(3);
+    let text = text_param(&mut d, title, "text");
+    assert_eq!(text, Some(filmcraft_project::ParamValue::Text("Night Drive".into())));
+    assert_eq!(d.exec("history.list", json!({}))["undo"].as_array().unwrap().len(), undo0 + 1, "one undo step");
+    assert_eq!(rows(&mut d), ["Night Drive", "Closing credits"]);
+    d.shot("text-panel-graphics");
+}
+
+/// Keyframed text: the Graphics tab shows a clip's text at the clip's start when the playhead is
+/// past the clip, and an edit is written there (not at the clip's last frame), so the value shown
+/// is the one that changes.
+#[test]
+fn a_graphics_tab_edit_writes_keyframed_text_where_it_is_shown() {
+    let mut d = Driver::demo();
+    d.ok("ui.set", json!({"workspace": "Captions and Graphics"}));
+    d.exec("playhead.set", json!({"seconds": 1.0}));
+    let clip = d.exec("graphics.newText", json!({"text": "Start", "seconds": 2}))["clip"].as_u64().unwrap();
+    let it = d.harness.state().session.active_sequence().unwrap().find_item(filmcraft_project::ClipId(clip)).unwrap().1.clone();
+    // animate the text: "Start" at the clip's start, "End" near its end
+    d.exec("effects.toggleAnimation", json!({"clip": clip, "effect": "graphic_text", "param": "text"}));
+    let late = it.start.0 + (it.duration.0 * 9) / 10;
+    d.exec("graphics.set", json!({"clip": clip, "layer": 0, "props": {"text": "End"}, "time": late}));
+    // the playhead past the clip: the row shows the start's text
+    d.exec("playhead.set", json!({"seconds": 10.0}));
+    d.ok("ui.click", json!({"id": "text.tab.Graphics"}));
+    d.frames(3);
+    d.ok("ui.click", json!({"id": format!("text.graphics.{clip}.0.text")}));
+    d.ok("ui.key", json!({"key": "A", "command": true}));
+    d.ok("ui.type", json!({"text": "Edited"}));
+    d.ok("ui.click", json!({"id": "text.graphics.search"}));
+    d.frames(3);
+    let at = |d: &mut Driver, t: i64| {
+        let it = d.harness.state().session.active_sequence().unwrap().find_item(filmcraft_project::ClipId(clip)).unwrap().1.clone();
+        let mt = it.effect_time_at(filmcraft_time::Tick(t));
+        it.effects.iter().find(|e| e.effect == "graphic_text").unwrap().param("text").unwrap().value_at(mt)
+    };
+    assert_eq!(at(&mut d, it.start.0), filmcraft_project::ParamValue::Text("Edited".into()), "the shown (start) value changed");
+    assert_eq!(at(&mut d, late), filmcraft_project::ParamValue::Text("End".into()), "the end keeps its own");
+}

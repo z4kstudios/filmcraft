@@ -3615,3 +3615,6 @@
 # View ▸ Reset Interface Zoom (#2253).
 	Reset Interface Zoom	Restablecer zoom de la interfaz
 	Track Color	Color de pista
+	Open a sequence to search its graphics	Abre una secuencia para buscar en sus gráficos
+	No text graphics in this sequence. Add text with the Type tool.	Esta secuencia no tiene gráficos con texto. Añade texto con la herramienta Texto.
+	No matching text.	Ningún texto coincide.
