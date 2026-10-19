@@ -327,3 +327,32 @@ fn ale_logs_are_not_offered_for_import() {
     assert!(!media_browser::extensions().contains(&"ale"));
     assert_eq!(media_browser::kind_of("cut.edl"), Some("project"));
 }
+
+/// Z4K: a folder given to `file.import` (Finder drop, Import…) becomes a bin, as in the Media Browser.
+#[test]
+fn z4k_file_import_takes_a_folder_as_a_bin() {
+    let mut fs = FakeFs::new();
+    let wav = filmcraft_media::wav::write_wav16(&[0.0; 4800], 2, 48_000);
+    fs.dirs.extend(["/Shoot", "/Shoot/Cam A"].map(String::from));
+    for f in ["/Shoot/slate.wav", "/Shoot/Cam A/take1.wav", "/loose.wav"] {
+        fs.files.get_mut().unwrap().insert(f.into(), wav.clone());
+    }
+    let mut s = Session::new(Arc::new(fs));
+    let r = s.execute("file.import", json!({"paths": ["/Shoot", "/loose.wav"]})).unwrap();
+    assert_eq!(r["items"].as_array().unwrap().len(), 3, "{r}");
+    assert_eq!(r["bins"].as_array().unwrap().len(), 2, "{r}");
+    let names: Vec<String> = s
+        .project
+        .root
+        .children
+        .iter()
+        .map(|c| match c {
+            filmcraft_project::BinEntry::Bin(b) => format!("bin {}", b.name),
+            filmcraft_project::BinEntry::Item(i) => s.project.item(*i).unwrap().name.clone(),
+        })
+        .collect();
+    assert_eq!(names, ["loose.wav", "bin Shoot"]);
+    // files alone still go straight through
+    let r = s.execute("file.import", json!({"paths": ["/Shoot/slate.wav"]})).unwrap();
+    assert!(r.get("bins").is_none_or(|b| b.as_array().is_none_or(Vec::is_empty)), "{r}");
+}

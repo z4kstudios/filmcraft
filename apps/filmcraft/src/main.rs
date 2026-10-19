@@ -36,6 +36,8 @@ mod logging;
 #[cfg(target_os = "macos")]
 mod native_menu;
 mod window_raise;
+#[cfg(target_os = "macos")]
+mod z4k_import_panel;
 
 use args::{Cli, Launch};
 use chrono::TimeZone;
@@ -276,6 +278,11 @@ fn app_creator(launch: Launch, graphics: graphics::GraphicsStart, created: Arc<A
                 .map(|p| p.to_string_lossy().to_string())
                 .collect()
         }));
+        // Z4K: Import… also takes folders
+        #[cfg(target_os = "macos")]
+        {
+            app.hooks.z4k_pick_import = Some(Box::new(z4k_import_panel::pick));
+        }
         // Link Media ▸ Locate…, Attach Proxies, Reconnect Full Resolution: one path, not imported.
         app.hooks.pick_file_for_relink = Some(Box::new(|exts: &[&str], _hint| {
             rfd::FileDialog::new()

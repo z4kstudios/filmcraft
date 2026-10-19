@@ -1349,6 +1349,10 @@ fn build() -> Vec<CommandSpec> {
             // Image Sequence: each path is the first frame of a numbered still sequence. With
             // Settings ▸ Media ▸ Import image sequences on, a single numbered still is detected.
             let as_sequence = p.get("imageSequence").and_then(Value::as_bool).unwrap_or(false);
+            // Z4K: a folder imports as a bin, as in the Media Browser
+            if let Some(r) = crate::z4k_folder_import::route(s, &paths, bin.map(|b| b.0), as_sequence) {
+                return r;
+            }
             let detect = !as_sequence && s.prefs.media.import_image_sequences && paths.len() == 1;
             for path in paths {
                 if as_sequence || (detect && detect_image_sequence(s, &path)) {

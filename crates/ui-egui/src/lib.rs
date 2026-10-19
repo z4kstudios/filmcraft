@@ -124,6 +124,9 @@ pub struct AudioDevices {
 #[derive(Default)]
 pub struct HostHooks {
     pub pick_files: Option<Box<dyn FnMut(&[&str]) -> Vec<String>>>,
+    /// Z4K: Import… picker that also accepts folders (each imports as a bin). Without it, Import…
+    /// uses [`Self::pick_files`].
+    pub z4k_pick_import: Option<Box<dyn FnMut(&[&str]) -> Vec<String>>>,
     /// The cursor in physical screen pixels. Where the windowing layer reports no pointer while files are dragged in from the OS (Windows), a drop is placed where this says it landed.
     pub cursor_screen_position: Option<Box<dyn Fn() -> Option<(i32, i32)>>>,
     pub pick_save: Option<Box<dyn FnMut(&str) -> Option<String>>>,
@@ -1281,7 +1284,7 @@ impl FilmcraftApp {
                     .copied()
                     .collect();
                 let bin = params.get("bin").cloned();
-                self.pick(FileDialog::open_files(&exts), move |app, paths| {
+                let then = move |app: &mut FilmcraftApp, paths: Vec<String>| {
                     if paths.is_empty() {
                         return Ok(Value::Null);
                     }
@@ -1294,7 +1297,16 @@ impl FilmcraftApp {
                         app.ui.status = errs.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; ");
                     }
                     r
-                })
+                };
+                // Z4K: the host's Import… picker that also takes folders
+                if self.hooks.run_dialog.is_none()
+                    && self.native_dialog.is_none()
+                    && let Some(pick) = self.hooks.z4k_pick_import.as_mut()
+                {
+                    let paths = pick(&exts);
+                    return then(self, paths);
+                }
+                self.pick(FileDialog::open_files(&exts), then)
             }
             // File ▸ Import with Image Sequence: choose the first numbered still
             "file.importImageSequence" => self.pick(FileDialog::open_files(filmcraft_media::STILL_EXTENSIONS), |app, paths| {
