@@ -235,6 +235,59 @@ fn list_view_columns_sort_resize_and_rename() {
     assert_ne!(d.app().session.project.item(ItemId(items[0])).unwrap().name, "Hero shot");
 }
 
+// Regression test for #1295: in a narrow List-view column the sort arrow was painted over the end of
+// the (clipped) column name; the name must be clipped to the left of the arrow.
+#[test]
+fn sorted_column_header_name_is_clipped_clear_of_the_sort_arrow() {
+    fn collect<'a>(shapes: &'a [egui::Shape], clip: egui::Rect, out: &mut Vec<(&'a egui::Shape, egui::Rect)>) {
+        for s in shapes {
+            match s {
+                egui::Shape::Vec(v) => collect(v, clip, out),
+                other => out.push((other, clip)),
+            }
+        }
+    }
+    let mut d = project_driver();
+    d.exec("project.view.set", json!({"view": "list"}));
+    d.frames(2);
+    // the default sort is by Name; make that column narrow enough that its name is clipped
+    for c in &mut d.app().session.prefs.project_panel.view.columns {
+        if c.name == "Name" {
+            c.width = 40.0;
+        }
+    }
+    d.frames(3);
+    assert_eq!(d.app().session.prefs.project_panel.view.sort.column, "Name");
+    let [hx, hy, hw, hh] = d.rect("project.list.header.Name");
+    let header = egui::Rect::from_min_size(egui::pos2(hx, hy), egui::vec2(hw, hh));
+    let mut all = Vec::new();
+    let clipped: Vec<_> = d.harness.output().shapes.iter().map(|c| (c.shape.clone(), c.clip_rect)).collect();
+    for (shape, clip) in &clipped {
+        collect(std::slice::from_ref(shape), *clip, &mut all);
+    }
+    // the visible part of the name: the clip rect of the header's "Name" text
+    let name_clip = all
+        .iter()
+        .find_map(|(s, clip)| match s {
+            egui::Shape::Text(t) if t.galley.text() == "Name" && header.contains(t.pos) => Some(*clip),
+            _ => None,
+        })
+        .expect("the Name header text is drawn");
+    // the arrow: the 1.3 px strokes drawn inside the header
+    let arrow_x: Vec<f32> = all
+        .iter()
+        .filter_map(|(s, _)| match s {
+            egui::Shape::LineSegment { points, stroke } if (stroke.width - 1.3).abs() < 1e-3 && header.contains(points[0]) && header.contains(points[1]) => {
+                Some(points[0].x.min(points[1].x))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(!arrow_x.is_empty(), "the sort arrow is drawn in the sorted column's header");
+    let arrow_left = arrow_x.into_iter().fold(f32::MAX, f32::min);
+    assert!(name_clip.max.x <= arrow_left, "the name is visible up to x={} but the sort arrow starts at x={arrow_left}", name_clip.max.x);
+}
+
 #[test]
 fn icon_view_hover_scrub_sets_in_and_out() {
     let mut d = project_driver();
@@ -1127,4 +1180,66 @@ fn escape_takes_back_a_media_browser_drag() {
     assert_eq!(d.app().session.project.items.len(), n0, "the import was taken back");
     assert_eq!(d.app().session.project.to_json(), before, "nothing was placed on the Timeline");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A clip dragged onto the New Item button makes a sequence from it, as File ▸ New ▸ Sequence
+/// From Clip does (#2855): named after the clip, with its frame size and rate, the clip on the
+/// timeline and the sequence open. One of several selected items brings the whole selection.
+#[test]
+fn dragging_clips_onto_new_item_makes_a_matching_sequence() {
+    let mut d = Driver::demo();
+    let (bin, items) = d.footage();
+    assert!(items.len() >= 3);
+    d.ok("ui.menu.invoke", json!({"id": "projectPanel.openBin", "params": {"bin": bin, "how": "inPlace"}}));
+    let card = |i: u64| format!("project.item.{i}");
+    d.wait_for(&card(items[0]));
+    let sequences = |d: &mut Driver| d.app().session.project.items.values().filter(|i| matches!(i.kind, filmcraft_project::ItemKind::Sequence(_))).count();
+    let clips = |d: &mut Driver| d.app().session.active_sequence().map(|q| q.video_tracks.iter().map(|t| t.items.len()).sum::<usize>()).unwrap_or(0);
+    let drop = json!({"id": "project.button.new-item"});
+    // footage that differs from a new sequence's defaults, so matching it shows
+    if let Some(filmcraft_project::ItemKind::Media(m)) = std::sync::Arc::make_mut(&mut d.app().session.project).item_mut(ItemId(items[0])).map(|i| &mut i.kind)
+        && let Some(v) = m.info.video.as_mut()
+    {
+        (v.width, v.height, v.frame_rate) = (1280, 720, filmcraft_time::FrameRate::FPS_25);
+    }
+    let def = filmcraft_project::SequenceSettings::default();
+    assert_ne!((def.width, def.height, def.frame_rate), (1280, 720, filmcraft_time::FrameRate::FPS_25));
+    let n0 = sequences(&mut d);
+
+    // a drop on another footer button, or a Source Monitor drag, makes nothing
+    d.ok("ui.drag", json!({"from": {"id": card(items[0])}, "to": {"id": "project.button.file.newBin"}, "steps": 16}));
+    d.frames(4);
+    assert_eq!(sequences(&mut d), n0, "New Bin is not a drop target");
+    d.exec("source.open", json!({"item": items[0]}));
+    d.wait_for("source.drag.both");
+    d.ok("ui.drag", json!({"from": {"id": "source.drag.both"}, "to": drop, "steps": 16}));
+    d.frames(4);
+    assert_eq!(sequences(&mut d), n0, "a Source Monitor drag is not taken");
+
+    // an item that is not selected: a sequence of that clip alone
+    d.exec("project.select", json!({"items": [items[2]]}));
+    let steps = d.app().session.history.undo.len();
+    d.ok("ui.drag", json!({"from": {"id": card(items[0])}, "to": drop, "steps": 16}));
+    d.frames(4);
+    assert_eq!(sequences(&mut d), n0 + 1, "the drop makes one sequence");
+    assert!(!d.has("project.newItem.file.newSequence"), "the drop does not open the New Item menu");
+    let app = d.app();
+    let clip = app.session.project.item(ItemId(items[0])).unwrap().clone();
+    let filmcraft_project::ItemKind::Media(m) = &clip.kind else { panic!("footage is media") };
+    let v = m.info.video.clone().expect("footage has video");
+    let q = app.session.active_sequence().expect("the new sequence is active");
+    let seq = app.session.state.active_sequence.unwrap();
+    assert_eq!(app.session.project.item(seq).unwrap().name, clip.name, "named after the clip");
+    assert_eq!((q.settings.width, q.settings.height, q.settings.frame_rate), (v.width, v.height, v.frame_rate), "the clip's frame size and rate");
+    assert_eq!(q.video_tracks[0].items.first().map(|c| c.item), Some(ItemId(items[0])), "the clip is on the timeline");
+    assert_eq!(app.session.history.undo.len(), steps + 1, "one undo step");
+    assert_eq!(clips(&mut d), 1, "an unselected item goes alone");
+
+    // two of the selection: both, back to back, in one sequence
+    d.exec("project.select", json!({"items": [items[0], items[1]]}));
+    d.frames(2);
+    d.ok("ui.drag", json!({"from": {"id": card(items[1])}, "to": drop, "steps": 16}));
+    d.frames(4);
+    assert_eq!(sequences(&mut d), n0 + 2);
+    assert_eq!(clips(&mut d), 2, "the whole selection is placed");
 }
