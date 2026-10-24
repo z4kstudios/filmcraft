@@ -2294,6 +2294,7 @@ version = "0.12.0"
 dependencies = [
  "chrono",
  "png",
+ "tempfile",
 ]
 
 [[package]]
