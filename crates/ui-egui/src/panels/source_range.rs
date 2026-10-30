@@ -107,6 +107,10 @@ pub fn interact(app: &mut FilmcraftApp, ui: &mut egui::Ui, bar: Rect, which: Whi
         {
             continue;
         }
+        // Z4K: Source with no marks has the whole clip as its range; no hand over the entire bar then
+        if which == Which::Source && edge == RangeEdge::Move && view.mark_in.is_none() && view.mark_out.is_none() {
+            continue;
+        }
         if (edge == RangeEdge::In && !shows(selected.start)) || (edge == RangeEdge::Out && !shows(selected.end())) {
             continue;
         }
