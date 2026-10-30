@@ -15,7 +15,8 @@ pub fn pick(exts: &[&str]) -> Vec<String> {
     panel.setCanChooseDirectories(true);
     panel.setAllowsMultipleSelection(true);
     panel.setPrompt(Some(&NSString::from_str("Import")));
-    let types: Vec<_> = exts.iter().map(|e| NSString::from_str(e)).collect();
+    // "public.folder" keeps folders selectable: with only file extensions listed, newer macOS greys them out
+    let types: Vec<_> = exts.iter().copied().chain(["public.folder"]).map(NSString::from_str).collect();
     // allowedContentTypes needs UTTypes (another crate); the extension list does the same here
     #[allow(deprecated)]
     panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&types)));
