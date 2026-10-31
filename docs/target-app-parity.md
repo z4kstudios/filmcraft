@@ -297,7 +297,7 @@ niche requests among the bug reports about two to one, and nobody reports having
 
 **Alpha.** It passes the core-workflow gate ([roadmap.md](roadmap.md#alpha-gate): all six of Premiere's core daily workflows work end to end on macOS and the project saves and reopens). Core workflows run end to end (import, edit, trim, colour, mix, caption, deliver,
 round-trip through XML / AAF), but ready-for-real-work is ~56%, below the ~75% beta bar, and the
-standard's beta condition "opens and saves the target's main format reliably" fails outright:
+beta condition "opens and saves the target's main format reliably" fails outright:
 FilmCraft cannot open a `.prproj` (it reads Premiere's FCP7 XML / AAF / OTIO exports instead).
 Distance to beta: ~19 points of ready-for-real-work plus `.prproj` import, ~400–700 agent-hours:
 

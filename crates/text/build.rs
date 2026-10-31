@@ -1,5 +1,4 @@
-//! Optional craft-fonts build input (see storytold/craft-fonts `docs/integration.md` and
-//! craftrules `standards/fonts.md`).
+//! Optional craft-fonts build input (see storytold/craft-fonts `docs/integration.md`).
 //!
 //! With `CRAFT_FONTS_DIR=<absolute path of a craft-fonts checkout>` (a relative path resolves from
 //! `crates/text`) this embeds every font listed in its

@@ -771,4 +771,4 @@ native menus) in `apps/filmcraft`. [roadmap.md](roadmap.md) has the milestone st
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-10 | trivial | Status line and revision history added (craftrules progress-docs standard); milestone link points at docs/roadmap.md |
+| 2026-10-10 | trivial | Status line and revision history added; milestone link points at docs/roadmap.md |

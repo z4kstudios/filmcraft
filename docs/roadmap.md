@@ -87,5 +87,5 @@ the web app shell ([G20](gaps.md#g20-the-web-app-shell)).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-10 | minor | Alpha gate table added (craftrules core-workflow gate): six core workflows, all pass on macOS; stage stays alpha |
+| 2026-10-10 | minor | Alpha gate table added (core-workflow gate): six core workflows, all pass on macOS; stage stays alpha |
 | 2026-10-10 | major | Created: milestone table moved from ROADMAP.md (M5 and M9 remaining work updated), HW and L10N rows, beta milestones B1–B7, Current focus from the re-measure |
