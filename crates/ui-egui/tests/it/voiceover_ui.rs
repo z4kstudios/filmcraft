@@ -158,6 +158,8 @@ fn settings_dialog_from_the_track_header_persists_on_ok() {
     // edit: countdown off, name appended, input channel 2 from the dropdown
     d.click("voiceover.countdown");
     d.click("voiceover.name");
+    d.frames(2); // Z4K: clicking a field selects its whole value, so move to the end before appending
+    d.ok("ui.key", json!({"key": "End"}));
     d.ok("ui.type", json!({"text": " Take"}));
     d.frames(2);
     d.click("voiceover.input");

@@ -11,10 +11,10 @@ use egui::{Context, Id};
 const SINGLE_LINE_MAX_H: f32 = 40.0;
 
 fn last_focus_id() -> Id {
-    Id::new("z4k-select-on-focus.last")
+    Id::unique("z4k-select-on-focus.last")
 }
 fn pending_id() -> Id {
-    Id::new("z4k-select-on-focus.pending")
+    Id::unique("z4k-select-on-focus.pending")
 }
 
 /// Call once per frame, after the panels have run.

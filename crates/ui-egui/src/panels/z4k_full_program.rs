@@ -17,7 +17,7 @@ pub const COMMANDS: &[UiCommand] = &[UiCommand { id: ID, label: "Full Screen Pro
 
 /// On: Some(whether the window was already full screen before).
 fn state_id() -> egui::Id {
-    egui::Id::new("z4k-full-program")
+    egui::Id::unique("z4k-full-program")
 }
 
 pub fn active(ctx: &egui::Context) -> bool {
@@ -55,7 +55,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     }
     let screen = ctx.content_rect();
     ctx.set_cursor_icon(egui::CursorIcon::None); // no mouse pointer over the picture
-    egui::Area::new(egui::Id::new("z4k-full-program-area")).order(egui::Order::Foreground).fixed_pos(screen.min).show(&ctx, |ui| {
+    egui::Area::new(egui::Id::unique("z4k-full-program-area")).order(egui::Order::Foreground).fixed_pos(screen.min).show(&ctx, |ui| {
         ui.set_clip_rect(screen);
         ui.painter().rect_filled(screen, 0.0, Color32::BLACK);
         // The monitor keeps a 4 px margin and its time/transport rows (88 px at this width) under

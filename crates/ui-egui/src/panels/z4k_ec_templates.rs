@@ -61,7 +61,7 @@ struct View {
 }
 
 fn view_id() -> egui::Id {
-    egui::Id::new("z4k-ec-templates")
+    egui::Id::unique("z4k-ec-templates")
 }
 
 fn load(ctx: &egui::Context) -> View {
@@ -148,7 +148,7 @@ pub fn thumb_texture(app: &FilmcraftApp, ctx: &egui::Context, id: &str) -> Optio
     let path = path_of(id).to_string();
     let info = ec::read_info(&path).ok()?;
     let file = ec::thumb_path(&info, &ec::thumb_dir(&app.session));
-    let key = egui::Id::new(("z4k-ec-thumb", file.to_string_lossy().to_string()));
+    let key = egui::Id::unique(("z4k-ec-thumb", file.to_string_lossy().to_string()));
     if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(key)) {
         return Some(t);
     }
