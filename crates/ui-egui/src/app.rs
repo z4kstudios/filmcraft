@@ -398,6 +398,7 @@ impl FilmcraftApp {
             self.graphics_notice = None;
         }
         crate::z4k_select_on_focus::after_frame(ui.ctx()); // Z4K: clicking into a field selects its value
+        crate::panels::z4k_bin_lumetri::after_frame(self); // Z4K: Lumetri on a bin adjustment layer
         self.last_ui_time = self.now();
         if !self.synthetic.is_empty() || self.synthetic_pending_step.is_some() {
             ctx.request_repaint();

@@ -198,8 +198,8 @@ pub(crate) fn set_lumetri_param(s: &mut Session, clip: ClipId, idx: usize, param
     Ok(())
 }
 
-fn set_lut(s: &mut Session, p: &Value, param: &str) -> Result<Value> {
-    let cmd = if param == "input_lut" { "lumetri.setInputLut" } else { "lumetri.setLook" };
+/// The LUT reference a command's `path` or `lut` names ("" = none).
+pub(crate) fn lut_reference(s: &mut Session, p: &Value, cmd: &str) -> Result<String> {
     let r = match (str_p(p, "path"), str_p(p, "lut")) {
         (Some(path), _) => {
             let path = path.to_string();
@@ -211,22 +211,33 @@ fn set_lut(s: &mut Session, p: &Value, param: &str) -> Result<Value> {
     if !r.is_empty() && filmcraft_render::luts::resolve(Some(&s.project), &r).is_none() {
         return Err(bad(cmd, format!("unknown LUT `{r}`")));
     }
+    Ok(r)
+}
+
+fn set_lut(s: &mut Session, p: &Value, param: &str) -> Result<Value> {
+    let cmd = if param == "input_lut" { "lumetri.setInputLut" } else { "lumetri.setLook" };
+    let r = lut_reference(s, p, cmd)?;
     let (clip, idx) = lumetri_clip(s, p, cmd)?;
     set_lumetri_param(s, clip, idx, param, ParamValue::Text(r.clone()), if param == "input_lut" { "Input LUT" } else { "Creative Look" })?;
     Ok(json!({"clip": clip.0, "lut": r, "name": filmcraft_render::luts::label(Some(&s.project), &r)}))
 }
 
-fn set_section(s: &mut Session, p: &Value) -> Result<Value> {
-    let sec = str_p(p, "section").ok_or_else(|| bad("lumetri.setSection", "need `section`"))?;
-    let param = match sec.to_ascii_lowercase().as_str() {
+/// The on/off parameter of a Lumetri section.
+pub(crate) fn section_param(sec: &str) -> Option<&'static str> {
+    Some(match sec.to_ascii_lowercase().as_str() {
         "basic" | "basic correction" => "basic_on",
         "creative" => "creative_on",
         "curves" => "curves_on",
         "wheels" | "color wheels" | "color wheels & match" => "wheels_on",
         "hsl" | "hsl secondary" => "hsl_on",
         "vignette" => "vignette_on",
-        o => return Err(bad("lumetri.setSection", format!("unknown section `{o}`"))),
-    };
+        _ => return None,
+    })
+}
+
+fn set_section(s: &mut Session, p: &Value) -> Result<Value> {
+    let sec = str_p(p, "section").ok_or_else(|| bad("lumetri.setSection", "need `section`"))?;
+    let param = section_param(sec).ok_or_else(|| bad("lumetri.setSection", format!("unknown section `{sec}`")))?;
     let (clip, idx) = lumetri_clip(s, p, "lumetri.setSection")?;
     let cur = s
         .active_sequence()

@@ -59,6 +59,7 @@ pub mod tts;
 pub mod voiceover;
 pub mod workspaces;
 /// Z4K: EffectCraft templates in Essential Graphics.
+pub mod z4k_bin_lumetri;
 pub mod z4k_ec_templates;
 pub mod z4k_full_program;
 

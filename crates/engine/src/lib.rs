@@ -59,6 +59,7 @@ pub mod transcript;
 pub mod trim;
 pub mod voiceover;
 /// Z4K: EffectCraft templates in FilmCraft.
+pub mod z4k_bin_effects;
 pub mod z4k_ec_templates;
 /// Z4K: folders in `file.import` become bins.
 pub mod z4k_folder_import;

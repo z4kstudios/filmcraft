@@ -31,26 +31,36 @@ fn selected(app: &FilmcraftApp) -> Option<(ClipId, filmcraft_project::TrackItem)
 
 pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
-    let Some((clip, it)) = selected(app) else {
-        crate::dock::placeholder(ui, rect, &t, tl!("(no clip selected)"));
-        return;
+    // Z4K: an adjustment layer selected in the Project panel is graded in the bin
+    let bin = crate::panels::z4k_bin_lumetri::target(app);
+    let (clip, name, effects, mt) = if let Some(item) = bin {
+        let (name, effects) = crate::panels::z4k_bin_lumetri::view(app, item);
+        (ClipId(item), name, effects, Tick::ZERO)
+    } else {
+        let Some((clip, it)) = selected(app) else {
+            crate::dock::placeholder(ui, rect, &t, tl!("(no clip selected)"));
+            return;
+        };
+        let ph = app.session.playhead();
+        let mt = it.effect_time_at(ph.clamp(it.start, it.end() - Tick(1)));
+        (clip, it.name, it.effects, mt)
     };
     let mut bui = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(12.0, 6.0))).id_salt("lumetri2"));
-    let Some(idx) = it.effects.iter().position(|e| e.effect == "lumetri") else {
+    let Some(idx) = effects.iter().position(|e| e.effect == "lumetri") else {
         bui.add_space(8.0);
-        bui.label(egui::RichText::new(tlf!("Master · {name}", name = it.name)).color(t.text_dim));
+        bui.label(egui::RichText::new(tlf!("Master · {name}", name)).color(t.text_dim));
         bui.add_space(8.0);
-        if bui.button(tl!("Add Lumetri Color to clip")).clicked() {
-            let _ = app.session.execute("effects.apply", json!({"clips": [clip.0], "effect": "lumetri"}));
+        let add = bui.button(tl!("Add Lumetri Color to clip"));
+        app.auto.add("lumetri.addLumetri", add.rect, "Add Lumetri Color");
+        if add.clicked() {
+            crate::panels::z4k_bin_lumetri::exec(app, bin, "effects.apply", json!({"clips": [clip.0], "effect": "lumetri"}));
         }
         return;
     };
-    let e = it.effects[idx].clone();
+    let e = effects[idx].clone();
     // HDR mode: the sequence's working space is Rec. 2100 PQ or HLG
     let hdr = app.session.active_sequence().is_some_and(|q| q.settings.color.working.is_hdr());
     let mut auto_rows: Vec<(String, Rect, &'static str)> = Vec::new();
-    let ph = app.session.playhead();
-    let mt = it.effect_time_at(ph.clamp(it.start, it.end() - Tick(1)));
     let mut actions: Actions = Vec::new();
     // header: clip context + fx toggle
     // the fx toggle is laid out first so a long clip name is truncated instead of widening the panel
@@ -58,10 +68,10 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let fx = ui.add(egui::Button::new(egui::RichText::new("fx").italics().color(if e.enabled { t.text } else { t.text_faint })).frame(false));
             if fx.clicked() {
-                let _ = app.session.execute("effects.toggleEnabled", json!({"clip": clip.0, "index": idx}));
+                crate::panels::z4k_bin_lumetri::exec(app, bin, "effects.toggleEnabled", json!({"clip": clip.0, "index": idx}));
             }
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.add(egui::Label::new(egui::RichText::new(tlf!("Master · {name}", name = it.name)).color(t.text_dim)).truncate());
+                ui.add(egui::Label::new(egui::RichText::new(tlf!("Master · {name}", name)).color(t.text_dim)).truncate());
             });
         });
     });
@@ -243,11 +253,12 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     }
     // a dragged value is one undo step, as in Effect Controls
+    if let Some(item) = bin {
+        actions.iter_mut().for_each(|a| a["item"] = json!(item));
+    }
     crate::panels::effect_controls::run(app, ui.ctx(), actions.into_iter().map(|a| ("effects.setParam".to_string(), a)).collect());
     for sec in sections {
-        if let Err(err) = app.session.execute("lumetri.setSection", json!({"clip": clip.0, "section": sec})) {
-            app.ui.status = err.to_string();
-        }
+        crate::panels::z4k_bin_lumetri::exec(app, bin, "lumetri.setSection", json!({"clip": clip.0, "section": sec}));
     }
     for (cmd, mut p) in lut_actions {
         if cmd == "view.display" {
@@ -262,16 +273,12 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
             let (cmd, clip) = (cmd.to_string(), clip.0);
             app.pick_ui(FileDialog::open_file(tl!("LUT"), &["cube", "3dl"]), move |app, paths| {
                 let Some(path) = paths.into_iter().next() else { return };
-                if let Err(err) = app.session.execute(&cmd, json!({"path": path, "clip": clip})) {
-                    app.ui.status = err.to_string();
-                }
+                crate::panels::z4k_bin_lumetri::exec(app, bin, &cmd, json!({"path": path, "clip": clip}));
             });
             continue;
         }
         p["clip"] = json!(clip.0);
-        if let Err(err) = app.session.execute(cmd, p) {
-            app.ui.status = err.to_string();
-        }
+        crate::panels::z4k_bin_lumetri::exec(app, bin, cmd, p);
     }
 }
 

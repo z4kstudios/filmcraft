@@ -91,6 +91,8 @@ pub struct ProjectPanelUi {
     pub active_tab: Option<usize>,
     /// The bin selected in the panel (rename, open).
     pub selected_bin: Option<u64>,
+    /// Z4K: the adjustment layer the Lumetri Color panel grades in the bin.
+    pub z4k_lumetri_item: Option<u64>,
     /// The item a Shift-click selects a range from: the last one clicked without Shift.
     pub anchor: Option<u64>,
     pub rename: Option<Rename>,

@@ -772,6 +772,28 @@ fn z4k_new_items_land_in_the_opened_bin() {
     assert!(in_bin(&mut d, "Black Video"), "File menu");
 }
 
+/// Z4K: an adjustment layer selected in the bin opens in the Lumetri panel; the Timeline takes it back.
+#[test]
+fn z4k_lumetri_panel_grades_a_selected_bin_adjustment_layer() {
+    let mut d = project_driver();
+    let item = d.exec("file.newAdjustmentLayer", json!({}))["item"].as_u64().unwrap();
+    d.frames(3);
+    assert_eq!(filmcraft_ui_egui::panels::z4k_bin_lumetri::target(d.app()), Some(item));
+    // using the Lumetri panel itself keeps the bin item
+    d.ok("ui.menu.invoke", json!({"id": "window.maximizeFrame"}));
+    d.ok("ui.panel.show", json!({"panel": "LumetriColor"}));
+    d.ok("ui.set", json!({"focused": "LumetriColor"}));
+    d.frames(3);
+    assert_eq!(filmcraft_ui_egui::panels::z4k_bin_lumetri::target(d.app()), Some(item));
+    d.click("lumetri.addLumetri");
+    assert!(d.app().session.project.z4k_bin_effects.contains_key(&ItemId(item)), "added in the bin");
+    d.frames(2);
+    assert!(d.has("lumetri.input_lut"), "the panel shows the bin item's Lumetri");
+    d.ok("ui.set", json!({"focused": "Timeline"}));
+    d.frames(2);
+    assert_eq!(filmcraft_ui_egui::panels::z4k_bin_lumetri::target(d.app()), None);
+}
+
 #[test]
 fn footer_buttons_are_wired() {
     let mut d = project_driver();

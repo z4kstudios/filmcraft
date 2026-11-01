@@ -401,3 +401,29 @@ fn z4k_new_items_go_in_the_named_bin() {
     let id = s.execute("file.newAdjustmentLayer", json!({})).unwrap()["item"].as_u64().unwrap();
     assert_eq!(bin_of(&s, ItemId(id)), root);
 }
+
+/// Z4K: Lumetri set on an adjustment layer in the bin comes with each clip placed from it, as a
+/// copy: a later bin edit leaves that clip alone. It is one undo step away, and it saves.
+#[test]
+fn z4k_a_bin_adjustment_layer_hands_its_lumetri_to_new_clips() {
+    let mut s = demo();
+    let item = s.execute("file.newAdjustmentLayer", json!({"seconds": 4})).unwrap()["item"].as_u64().unwrap();
+    s.execute("z4k.binLumetri.setLut", json!({"item": item, "lut": ""})).unwrap();
+    s.execute("z4k.binLumetri.setParam", json!({"item": item, "param": "exposure", "value": 1.5})).unwrap();
+    let exposure = |e: &filmcraft_project::EffectInstance| e.param("exposure").unwrap().value.clone();
+    let place = |s: &mut Session, track: &str| {
+        let c = s.execute("timeline.place", json!({"item": item, "track": track, "seconds": 1})).unwrap()["clips"][0].as_u64().unwrap();
+        let (_, it) = s.active_sequence().unwrap().find_item(filmcraft_project::ClipId(c)).unwrap();
+        it.effects.iter().find(|e| e.effect == "lumetri").cloned().expect("placed with Lumetri")
+    };
+    let first = place(&mut s, "V3");
+    assert_eq!(exposure(&first), filmcraft_project::ParamValue::Float(1.5));
+    s.execute("z4k.binLumetri.setParam", json!({"item": item, "param": "exposure", "value": -1.0})).unwrap();
+    let c = s.active_sequence().unwrap();
+    let placed = c.video_tracks[2].items.iter().find(|i| i.item == ItemId(item)).unwrap();
+    assert_eq!(exposure(placed.effects.iter().find(|e| e.effect == "lumetri").unwrap()), filmcraft_project::ParamValue::Float(1.5), "a copy");
+    let json = serde_json::to_string(&*s.project).unwrap();
+    let back: filmcraft_project::Project = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.z4k_bin_effects.len(), 1);
+    assert!(s.execute("z4k.binLumetri.apply", json!({"item": s.project.sequences().next().unwrap().id.0})).is_err(), "adjustment layers only");
+}

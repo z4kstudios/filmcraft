@@ -103,6 +103,9 @@ pub struct Project {
     /// project item. Schema v12.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub source_graphics: BTreeMap<ItemId, SourceGraphic>,
+    /// Z4K: effects a bin item hands to each clip placed from it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub z4k_bin_effects: BTreeMap<ItemId, Vec<EffectInstance>>,
     /// Narrations (Text to Speech): the script and voice settings each generated WAV item was
     /// made from, keyed by that item. Schema v14.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -136,6 +139,7 @@ impl Project {
             transcripts: BTreeMap::new(),
             search_bins: Vec::new(),
             source_graphics: BTreeMap::new(),
+            z4k_bin_effects: BTreeMap::new(),
             narrations: BTreeMap::new(),
             notes: String::new(),
         }
@@ -166,7 +170,7 @@ impl Project {
         }
         self.search_bins.iter().for_each(|b| see(b.id.0));
         // deleting an item leaves these entries behind: a new item taking that id would inherit them
-        self.transcripts.keys().chain(self.source_graphics.keys()).chain(self.narrations.keys()).for_each(|i| see(i.0));
+        self.transcripts.keys().chain(self.source_graphics.keys()).chain(self.narrations.keys()).chain(self.z4k_bin_effects.keys()).for_each(|i| see(i.0));
         // `lut.import` names LUTs `lut<id>`
         self.luts.iter().filter_map(|l| l.id.strip_prefix("lut")?.parse().ok()).for_each(&mut see);
         fn mixer(m: &MixerStrip) -> impl Iterator<Item = u64> + '_ {
@@ -442,6 +446,12 @@ impl Project {
         let source_graphic = self.source_graphics.get(&item).filter(|_| kind == TrackKind::Video).cloned();
         if let Some(sg) = &source_graphic {
             effects.extend(sg.layers.iter().cloned());
+        }
+        // Z4K
+        if kind == TrackKind::Video
+            && let Some(bin_effects) = self.z4k_bin_effects.get(&item)
+        {
+            effects.extend(bin_effects.iter().cloned());
         }
         // a multi-camera source sequence edits in as a multi-camera clip showing its first angle
         let multicam =

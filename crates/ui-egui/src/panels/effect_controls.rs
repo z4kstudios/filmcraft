@@ -1273,6 +1273,8 @@ pub(crate) fn run(app: &mut FilmcraftApp, ctx: &egui::Context, actions: Vec<(Str
             p["begin"] = json!(begun != press && !wrote);
             wrote = true;
         }
+        // Z4K: the Lumetri panel grading a bin item tags its writes with the item
+        let cmd = if p.get("item").is_some() { crate::panels::z4k_bin_lumetri::route(&cmd).map_or(cmd, str::to_string) } else { cmd };
         if let Err(e) = app.session.execute(&cmd, p) {
             app.ui.status = e.to_string();
         }
