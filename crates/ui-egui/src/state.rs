@@ -899,6 +899,8 @@ pub struct SequenceSettingsDraft {
     /// File ▸ New ▸ Sequence…: the dialog makes a new sequence (`file.newSequence`) with these
     /// settings and `video_tracks` / `audio_tracks` tracks, instead of changing the active one.
     pub new_sequence: bool,
+    /// Z4K: the bin a new sequence goes in (None = the project's root).
+    pub z4k_bin: Option<u64>,
     pub video_tracks: u32,
     pub audio_tracks: u32,
     pub fps_num: i64,
@@ -921,6 +923,7 @@ impl Default for SequenceSettingsDraft {
             tab: "general".into(),
             name: String::new(),
             new_sequence: false,
+            z4k_bin: None,
             video_tracks: 3,
             audio_tracks: 3,
             fps_num: 24_000,

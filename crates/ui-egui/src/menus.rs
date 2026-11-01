@@ -204,6 +204,7 @@ fn select_all_in_text_field(ctx: &egui::Context) -> bool {
 
 /// Execute a UI or engine command by id.
 pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, mut params: Value) -> Result<Value, String> {
+    params = crate::panels::project::z4k_new_item_params(app, id, params); // Z4K
     // A focused text field takes Select All before the Project panel redirect below, or the
     // Project search box would select items.
     if id == "edit.selectAll" && select_all_in_text_field(ctx) {
@@ -585,8 +586,9 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, mut params:
         }
         // File ▸ New ▸ Sequence… (Cmd+N) opens New Sequence; with params (a clip, an agent) it
         // makes the sequence directly
-        "file.newSequence" if params.as_object().is_none_or(|m| m.is_empty()) => {
+        "file.newSequence" if params.as_object().is_none_or(|m| m.keys().all(|k| k == "bin")) => {
             crate::panels::sequence_settings::open_new(app);
+            app.ui.sequence_settings.z4k_bin = params.get("bin").and_then(Value::as_u64);
             return Ok(json!({"dialog": "newSequence"}));
         }
         "sequence.colorSettings" if params.as_object().is_none_or(|m| m.is_empty()) => {

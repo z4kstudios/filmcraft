@@ -377,3 +377,27 @@ fn select_all_rejects_bad_bins_without_touching_the_selection() {
     let r = s.execute("project.selectAll", json!({"bin": null})).unwrap();
     assert_eq!(r["selected"].as_u64(), Some(s.project.items.len() as u64));
 }
+
+/// Z4K: new items go in the bin they were made for; without one, the project's root as before.
+#[test]
+fn z4k_new_items_go_in_the_named_bin() {
+    let mut s = demo();
+    let bin = s.execute("file.newBin", json!({"name": "GFX"})).unwrap()["bin"].as_u64().unwrap();
+    for (cmd, key) in [
+        ("file.newAdjustmentLayer", "item"),
+        ("file.newBarsAndTone", "item"),
+        ("file.newBlackVideo", "item"),
+        ("file.newColorMatte", "item"),
+        ("file.newCountingLeader", "item"),
+        ("file.newTransparentVideo", "item"),
+        ("file.newSequence", "sequence"),
+    ] {
+        let id = s.execute(cmd, json!({"bin": bin})).unwrap()[key].as_u64().unwrap();
+        assert_eq!(bin_of(&s, ItemId(id)), bin, "{cmd}");
+    }
+    let ids = s.execute("file.importDemoFootage", json!({"scene": "Aurora", "bin": bin})).unwrap();
+    assert_eq!(bin_of(&s, ItemId(ids["items"][0].as_u64().unwrap())), bin);
+    let root = s.project.root.id.0;
+    let id = s.execute("file.newAdjustmentLayer", json!({})).unwrap()["item"].as_u64().unwrap();
+    assert_eq!(bin_of(&s, ItemId(id)), root);
+}

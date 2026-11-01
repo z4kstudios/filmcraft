@@ -170,7 +170,9 @@ pub fn system_report(app: &FilmcraftApp) -> Value {
 
 /// Menu / shortcut entry points. Returns None for ids this module doesn't handle.
 pub fn route(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Value) -> Option<Result<Value, String>> {
-    let empty = params.as_object().is_none_or(|m| m.is_empty());
+    // Z4K: New Color Matte still asks when it only knows its bin
+    let bin_only = id == "file.newColorMatte" && params.as_object().is_some_and(|m| m.keys().all(|k| k == "bin"));
+    let empty = bin_only || params.as_object().is_none_or(|m| m.is_empty());
     // UI commands
     match id {
         "view.dynamicAudioWaveforms" => {
@@ -254,10 +256,14 @@ pub fn route(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Val
         app.ui.status = e.clone();
         return Some(Err(e));
     }
-    let (params, info) = match defaults(app, cmd, id) {
+    let bin = params.get("bin").cloned(); // Z4K
+    let (mut params, info) = match defaults(app, cmd, id) {
         Ok(x) => x,
         Err(e) => return Some(Err(e)),
     };
+    if let Some(bin) = bin {
+        params["bin"] = bin;
+    }
     app.ui.extras.dialog = Some(ClipDialogDraft { command: cmd.into(), params, info, error: String::new() });
     Some(Ok(json!({"dialog": meta(cmd).map(|m| m.1)})))
 }
