@@ -1082,9 +1082,8 @@ fn new_generator(s: &mut Session, g: Generator, name: &str, label: Label, p: &Va
     let src = GeneratorSource::new(g, w, h, st.frame_rate, Tick::from_seconds_f64(secs));
     let pool = s.media.clone();
     let par = filmcraft_project::sane_par(st.par);
-    let bin = u64_p(p, "bin").map(filmcraft_project::BinId); // Z4K
     let id = s.edit(&format!("New {name}"), |pr, st| {
-        let id = crate::demo::add_generator(pr, &pool, src, &name, label, bin);
+        let id = crate::demo::add_generator(pr, &pool, src, &name, label, None);
         // made for the sequence: its pixels have the sequence's aspect, as in Premiere
         if let Some(ItemKind::Media(m)) = pr.item_mut(id).map(|i| &mut i.kind)
             && let Some(v) = m.info.video.as_mut()
@@ -1648,9 +1647,8 @@ fn build() -> Vec<CommandSpec> {
                 let n = s.project.sequences().count() + 1;
                 let name = str_p(p, "name").map(str::to_string).unwrap_or_else(|| format!("Sequence {n:02}"));
                 let seq_label = s.prefs.labels.defaults.sequence;
-                let bin = u64_p(p, "bin").map(filmcraft_project::BinId); // Z4K
                 let id = s.edit("New Sequence", |pr, st2| {
-                    let id = pr.new_sequence(&name, st, nv as usize, na as usize, bin);
+                    let id = pr.new_sequence(&name, st, nv as usize, na as usize, None);
                     if let Some(it) = pr.item_mut(id) {
                         it.label = seq_label;
                     }
@@ -1694,16 +1692,15 @@ fn build() -> Vec<CommandSpec> {
             let id = s.edit("New Bin", |pr, _| Ok(pr.add_bin(&n, parent)))?;
             Ok(json!({"bin": id.0}))
         }),
-        cmd!("file.newAdjustmentLayer", "Adjustment Layer…", ["File", "New"], None, r#"{"seconds":f64=5,"bin":binId?}"#, always, |s, p| {
+        cmd!("file.newAdjustmentLayer", "Adjustment Layer…", ["File", "New"], None, r#"{"seconds":f64=5}"#, always, |s, p| {
             let st = s.active_sequence().map(|q| q.settings.clone()).unwrap_or_default();
             let secs = f64_p(p, "seconds").unwrap_or(5.0);
-            let bin = u64_p(p, "bin").map(filmcraft_project::BinId); // Z4K
             let id = s.edit("New Adjustment Layer", |pr, st2| {
                 let id = pr.add_item(
                     "Adjustment Layer",
                     Label::Lavender,
                     ItemKind::AdjustmentLayer { width: st.width, height: st.height, rate: st.frame_rate, duration: Tick::from_seconds_f64(secs) },
-                    bin,
+                    None,
                 );
                 st2.project_selection = vec![id];
                 Ok(id)
@@ -1756,11 +1753,10 @@ fn build() -> Vec<CommandSpec> {
                     None => filmcraft_media::DemoScene::ALL.to_vec(),
                 };
                 let pool = s.media.clone();
-                let bin = u64_p(p, "bin").map(filmcraft_project::BinId); // Z4K
                 let ids = s.edit("Import Demo Footage", |pr, _| {
                     Ok(scenes
                         .iter()
-                        .map(|sc| crate::demo::add_generator(pr, &pool, GeneratorSource::demo(*sc), sc.file_name(), Label::Iris, bin))
+                        .map(|sc| crate::demo::add_generator(pr, &pool, GeneratorSource::demo(*sc), sc.file_name(), Label::Iris, None))
                         .collect::<Vec<_>>())
                 })?;
                 Ok(json!({"items": ids.iter().map(|i| i.0).collect::<Vec<_>>()}))

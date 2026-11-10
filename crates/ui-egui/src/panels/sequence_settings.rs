@@ -74,7 +74,6 @@ pub fn open(app: &mut FilmcraftApp) {
     let st = &q.settings;
     let name = app.session.state.active_sequence.and_then(|id| app.session.project.item(id)).map(|i| i.name.clone()).unwrap_or_default();
     app.ui.sequence_settings = SequenceSettingsDraft {
-        z4k_bin: None,
         tab: "general".into(),
         name,
         new_sequence: false,
@@ -119,7 +118,6 @@ pub fn open_new(app: &mut FilmcraftApp) {
         wide_gamut: st.color.wide_gamut,
         auto_tone_map: st.color.auto_tone_map,
         name: format!("Sequence {n:02}"),
-        z4k_bin: None,
     };
     app.dialog = Some(crate::Dialog::SequenceSettings);
 }
@@ -140,9 +138,6 @@ fn new_sequence_params(d: &SequenceSettingsDraft) -> (Map<String, Value>, Map<St
     p.insert("mix".into(), json!(d.mix));
     p.insert("video".into(), json!(d.video_tracks.min(256)));
     p.insert("audio".into(), json!(d.audio_tracks.min(256)));
-    if let Some(bin) = d.z4k_bin {
-        p.insert("bin".into(), json!(bin));
-    }
     // what's left: only the settings `file.newSequence` has no parameter for
     let after = SequenceSettings { frame_rate: rate(d), width: d.width, height: d.height, sample_rate: d.sample_rate, ..Default::default() };
     let mut rest = changes(d, &after, name);

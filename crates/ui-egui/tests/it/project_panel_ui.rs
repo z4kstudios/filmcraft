@@ -740,38 +740,6 @@ fn a_dragged_bin_nests_in_another_and_back_out() {
     assert_eq!(parent(&mut d, inner), Some(root));
 }
 
-/// Z4K: inside an opened bin, New Item and File ▸ New make their item there, dialogs included.
-#[test]
-fn z4k_new_items_land_in_the_opened_bin() {
-    let mut d = project_driver();
-    let bin = d.exec("file.newBin", json!({"name": "GFX"}))["bin"].as_u64().unwrap();
-    d.app().ui.project_panel.bin = Some(bin);
-    d.frames(3);
-    let in_bin = |d: &mut Driver, name: &str| {
-        let s = &d.app().session.project;
-        let b = s.root.find_bin(filmcraft_project::BinId(bin)).unwrap();
-        b.children.iter().any(|c| matches!(c, BinEntry::Item(i) if s.item(*i).is_some_and(|it| it.name.starts_with(name))))
-    };
-    let new_item = |d: &mut Driver, c: &str| {
-        d.click("project.button.new-item");
-        d.wait_for(&format!("project.newItem.{c}"));
-        d.click(&format!("project.newItem.{c}"));
-    };
-    new_item(&mut d, "file.newAdjustmentLayer");
-    assert!(in_bin(&mut d, "Adjustment Layer"), "panel button");
-    new_item(&mut d, "file.newColorMatte");
-    d.click("colorMatte.ok");
-    assert!(in_bin(&mut d, "Color Matte"), "through its dialog");
-    new_item(&mut d, "file.newSequence");
-    assert!(d.app().ui.sequence_settings.new_sequence, "New Sequence still asks");
-    d.frames(6); // the dialog's window settles before it takes clicks
-    d.click("sequenceSettings.ok");
-    assert!(in_bin(&mut d, "Sequence"), "through its dialog");
-    d.ok("ui.menu.invoke", json!({"id": "file.newBlackVideo"}));
-    d.frames(2);
-    assert!(in_bin(&mut d, "Black Video"), "File menu");
-}
-
 /// Z4K: an adjustment layer selected in the bin opens in the Lumetri panel; the Timeline takes it back.
 #[test]
 fn z4k_lumetri_panel_grades_a_selected_bin_adjustment_layer() {

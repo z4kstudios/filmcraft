@@ -669,7 +669,7 @@ fn footer(app: &mut FilmcraftApp, ui: &mut egui::Ui, bar: Rect, v: &View, action
                     crate::panels::clear_drag(ui);
                 }
             }
-            egui::Popup::menu(&resp).show(|ui| new_item_menu(app, ui, pre, v.bin.0, actions));
+            egui::Popup::menu(&resp).show(|ui| new_item_menu(app, ui, pre, actions));
         } else if resp.clicked() && enabled {
             match id {
                 "find" => actions.push(("edit.find".into(), json!({}))),
@@ -701,24 +701,12 @@ pub const NEW_ITEMS: [(&str, &str); 8] = [
     ("Demo Footage", "file.importDemoFootage"),
 ];
 
-/// Z4K: a new item goes in the bin the Project panel shows, unless the caller named one.
-pub fn z4k_new_item_params(app: &FilmcraftApp, id: &str, mut params: Value) -> Value {
-    if !NEW_ITEMS.iter().any(|(_, c)| *c == id) || params.get("bin").is_some() {
-        return params;
-    }
-    if !params.is_object() {
-        params = json!({});
-    }
-    params["bin"] = json!(app.import_bin().0);
-    params
-}
-
-pub fn new_item_menu(app: &mut FilmcraftApp, ui: &mut egui::Ui, pre: &str, bin: u64, actions: &mut Actions) {
+pub fn new_item_menu(app: &mut FilmcraftApp, ui: &mut egui::Ui, pre: &str, actions: &mut Actions) {
     for (label, c) in NEW_ITEMS {
         let b = ui.button(crate::i18n::t(label));
         app.auto.add(&format!("{pre}.newItem.{c}"), b.rect, label);
         if b.clicked() {
-            actions.push((c.into(), json!({"bin": bin})));
+            actions.push((c.into(), json!({})));
             ui.close();
         }
     }
