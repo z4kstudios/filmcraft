@@ -902,7 +902,7 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub fn commands() -> Vec<CommandSpec> {
-    let q = |id, label, params, run| CommandSpec { id, label, menu: &[], shortcut: None, params, enabled: always, run, journal: false };
+    let q = |id, label, params, run| CommandSpec { id, label, menu: &[], shortcut: None, params, enabled: always, run, journal: false, named: crate::commands::NamedKeys::NONE };
     vec![
         q("graphics.ecTemplate.list", "EffectCraft Templates", "{} → installed .ectemplate templates and their controls", list),
         CommandSpec {
@@ -914,6 +914,7 @@ pub fn commands() -> Vec<CommandSpec> {
             enabled: always,
             run: install,
             journal: true,
+            named: crate::commands::NamedKeys::NONE,
         },
         CommandSpec {
             id: "graphics.ecTemplate.apply",
@@ -924,6 +925,7 @@ pub fn commands() -> Vec<CommandSpec> {
             enabled: has_seq,
             run: apply,
             journal: true,
+            named: crate::commands::NamedKeys::NONE,
         },
         q(
             "graphics.ecTemplate.controls",
@@ -940,6 +942,7 @@ pub fn commands() -> Vec<CommandSpec> {
             enabled: has_target,
             run: set,
             journal: true,
+            named: crate::commands::NamedKeys::NONE,
         },
     ]
 }

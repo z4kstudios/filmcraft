@@ -119,7 +119,7 @@ fn set_section(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub fn commands() -> Vec<CommandSpec> {
-    let c = |id, label, params, run| CommandSpec { id, label, menu: &[], shortcut: None, params, enabled: always, run, journal: true };
+    let c = |id, label, params, run| CommandSpec { id, label, menu: &[], shortcut: None, params, enabled: always, run, journal: true, named: crate::commands::NamedKeys::NONE };
     vec![
         c("z4k.binLumetri.apply", "Add Lumetri to Bin Item", r#"{"item":id}"#, apply),
         c("z4k.binLumetri.remove", "Remove Lumetri from Bin Item", r#"{"item":id}"#, remove),
