@@ -80,37 +80,9 @@ pub fn hot_number(ui: &mut Ui, label: &str, id: egui::Id, value: f64, options: H
     let editing_id = id.with("editing");
     let mut editing: Option<String> = ui.data(|d| d.get_temp(editing_id));
     if let Some(buf) = editing.as_mut() {
-        let stepped = z4k_arrow_step(ui, id, value, options.range, options.decimals, options.suffix, buf); // Z4K
-        let (r, out) = hot_number_editor(ui, label, id, value, options.range, options.suffix, buf);
-        return (r, out.or(stepped));
+        return hot_number_editor(ui, label, id, value, options.range, options.suffix, buf);
     }
     hot_number_display(ui, id, value, options)
-}
-
-/// Z4K: Up/Down in a hot number being typed in step its value, as in Premiere: by 1, or by the last
-/// shown digit in a narrow range such as Exposure. Shift ×10, Command ×0.1, as a drag.
-fn z4k_arrow_step(ui: &mut Ui, id: egui::Id, value: f64, range: (f64, f64), decimals: usize, suffix: &str, buf: &mut String) -> Option<f64> {
-    let edit_id = id.with("edit");
-    if !ui.ctx().memory(|m| m.has_focus(edit_id)) {
-        return None;
-    }
-    let mult = hot_number_drag_multiplier(ui);
-    let mods = ui.input(|i| i.modifiers);
-    let dir =
-        ui.input_mut(|i| f64::from(i.count_and_consume_key(mods, egui::Key::ArrowUp) as i32 - i.count_and_consume_key(mods, egui::Key::ArrowDown) as i32));
-    if dir == 0.0 {
-        return None;
-    }
-    let base = if range.1 - range.0 > 20.0 { 1.0 } else { 10f64.powi(-(decimals as i32)) };
-    let typed = if suffix.trim().is_empty() { buf.clone() } else { buf.replace(suffix.trim(), "") };
-    let from = crate::calc::eval(&typed, value).unwrap_or(value);
-    let v = (from + dir * base * mult).clamp(range.0, range.1);
-    *buf = format!("{v:.decimals$}");
-    // the whole value stays selected, so typing still replaces it
-    let mut st = egui::text_edit::TextEditState::load(ui.ctx(), edit_id).unwrap_or_default();
-    st.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(buf.chars().count()))));
-    st.store(ui.ctx(), edit_id);
-    Some(v)
 }
 
 /// The single-line text editor shown after a click on a hot number.
@@ -666,51 +638,6 @@ mod tests {
                 assert!((c - 11.0).abs() <= 1.0, "{text:?}: text centred at {c}, the field's centre is 11");
             }
         }
-    }
-
-    /// Z4K: Up/Down step a hot number being typed in: 1, Shift 10, or the last digit in a narrow range.
-    #[test]
-    fn z4k_arrows_step_a_hot_number() {
-        let press = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
-        let run = |range: (f64, f64), decimals: usize, value: f64, keys: Vec<egui::Event>| -> Vec<f64> {
-            let ctx = egui::Context::default();
-            let t = Tokens::for_kind(ThemeKind::Dark);
-            let id = egui::Id::unique("z4k-step");
-            ctx.data_mut(|d| d.insert_temp(id.with("editing"), format!("{value:.decimals$}")));
-            let mut value = value;
-            let mut seen = Vec::new();
-            let mut step = |events: Vec<egui::Event>, seen: &mut Vec<f64>| {
-                let mut events = events;
-                if let Some(egui::Event::Key { modifiers, .. }) = events.first() {
-                    events.insert(0, egui::Event::ModifiersChanged(*modifiers));
-                }
-                let input = egui::RawInput { events, ..Default::default() };
-                ctx.run_ui(input, |ui| {
-                    if let (_, Some(v)) = hot_number(ui, "Value", id, value, HotNumberOptions::new(1.0, range, decimals, "", &t)) {
-                        value = v;
-                        seen.push(v);
-                    }
-                })
-                .textures_delta
-                .clear();
-            };
-            for _ in 0..3 {
-                step(vec![], &mut seen);
-            }
-            for k in keys {
-                step(vec![k], &mut seen);
-            }
-            seen
-        };
-        use egui::{Key, Modifiers};
-        let none = Modifiers::NONE;
-        assert_eq!(
-            run((-100.0, 100.0), 1, 10.0, vec![press(Key::ArrowUp, none), press(Key::ArrowUp, none), press(Key::ArrowDown, none)]),
-            vec![11.0, 12.0, 11.0]
-        );
-        assert_eq!(run((-100.0, 100.0), 1, 10.0, vec![press(Key::ArrowUp, Modifiers::SHIFT)]), vec![20.0]);
-        assert_eq!(run((-5.0, 5.0), 2, 1.0, vec![press(Key::ArrowUp, none)]), vec![1.01]);
-        assert_eq!(run((0.0, 100.0), 0, 100.0, vec![press(Key::ArrowUp, none)]), vec![100.0], "stops at the top");
     }
 
     fn frame(ctx: &egui::Context, events: Vec<egui::Event>, id: egui::Id) {
