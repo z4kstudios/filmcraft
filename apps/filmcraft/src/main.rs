@@ -382,7 +382,10 @@ fn app_creator(launch: Launch, graphics: graphics::GraphicsStart, created: Arc<A
             }
         }
         let mut app = FilmcraftApp::new(session);
-        app.set_startup_update_check(true);
+        // Z4K: no update check at start. This build is upstream main (its version reads lower than the
+        // latest release), so the check would replace it with the plain release; Zak's own updater
+        // (Update-My-FilmCraft) keeps it current instead.
+        app.set_startup_update_check(false);
         app.graphics_notice = notice;
         if recover == Some(false) {
             app.dialog = None;
