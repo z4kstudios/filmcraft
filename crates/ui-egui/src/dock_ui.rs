@@ -231,11 +231,6 @@ impl FilmcraftApp {
     pub(crate) fn dock_area(&mut self, ui: &mut egui::Ui, body: Rect) {
         let t = self.tokens;
         let ctx = ui.ctx().clone();
-        // Z4K: Full Screen Program Monitor replaces the panels while it is on
-        if panels::z4k_full_program::active(&ctx) {
-            panels::z4k_full_program::show(self, ui);
-            return;
-        }
         let seqs = SeqTabs {
             open: self
                 .session

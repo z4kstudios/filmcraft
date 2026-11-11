@@ -333,7 +333,7 @@ pub fn invoke_command(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, mut
     if let Some(r) = crate::panels::keyboard::route(app, ctx, id, &params) {
         return r;
     }
-    if let Some(r) = crate::panels::z4k_full_program::route(ctx, id) {
+    if let Some(r) = crate::panels::z4k_full_program::route(app, ctx, id) {
         return r; // Z4K
     }
     if !targets_source(app, &params)
