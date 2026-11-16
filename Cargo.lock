@@ -1195,10 +1195,10 @@ dependencies = [
 [[package]]
 name = "craft-captions"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=47107f660191de2f0b425569506f4daa4faadac9#47107f660191de2f0b425569506f4daa4faadac9"
+source = "git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c#7d08706a3dc62d99c46f9d31bced0cba3ac4c36c"
 dependencies = [
- "craft-timeline 0.1.0 (git+https://github.com/storytold/craft-libs?rev=47107f660191de2f0b425569506f4daa4faadac9)",
- "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=47107f660191de2f0b425569506f4daa4faadac9)",
+ "craft-timeline 0.1.0 (git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c)",
+ "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c)",
  "thiserror 2.0.21",
 ]
 
@@ -1250,6 +1250,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "craft-font-catalog"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=f01f6aca3afdf664b6c3e651e8e58caddc701c62#f01f6aca3afdf664b6c3e651e8e58caddc701c62"
+dependencies = [
+ "skrifa 0.47.0",
+ "thiserror 2.0.21",
+ "windows-registry",
 ]
 
 [[package]]
@@ -1361,11 +1371,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "craft-timeline"
+name = "craft-time"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=47107f660191de2f0b425569506f4daa4faadac9#47107f660191de2f0b425569506f4daa4faadac9"
+source = "git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c#7d08706a3dc62d99c46f9d31bced0cba3ac4c36c"
 dependencies = [
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1373,7 +1384,18 @@ name = "craft-timeline"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=654e8d55e16b349fba04f5a48e8da221680ee7e3#654e8d55e16b349fba04f5a48e8da221680ee7e3"
 dependencies = [
- "craft-time",
+ "craft-time 0.1.0 (git+https://github.com/storytold/craft-libs?rev=654e8d55e16b349fba04f5a48e8da221680ee7e3)",
+]
+
+[[package]]
+name = "craft-timeline"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c#7d08706a3dc62d99c46f9d31bced0cba3ac4c36c"
+dependencies = [
+ "craft-time 0.1.0 (git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c)",
+ "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c)",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1391,7 +1413,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "serde",
- "skrifa",
+ "skrifa 0.44.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -1458,16 +1480,17 @@ dependencies = [
 [[package]]
 name = "craft-xml"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=47107f660191de2f0b425569506f4daa4faadac9#47107f660191de2f0b425569506f4daa4faadac9"
+source = "git+https://github.com/storytold/craft-libs?rev=654e8d55e16b349fba04f5a48e8da221680ee7e3#654e8d55e16b349fba04f5a48e8da221680ee7e3"
 dependencies = [
  "quick-xml 0.41.0",
+ "serde",
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "craft-xml"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=654e8d55e16b349fba04f5a48e8da221680ee7e3#654e8d55e16b349fba04f5a48e8da221680ee7e3"
+source = "git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c#7d08706a3dc62d99c46f9d31bced0cba3ac4c36c"
 dependencies = [
  "quick-xml 0.41.0",
  "serde",
@@ -2074,7 +2097,7 @@ dependencies = [
  "parking_lot",
  "profiling",
  "self_cell",
- "skrifa",
+ "skrifa 0.44.0",
  "smallvec",
  "unicode-bidi",
  "unicode-general-category",
@@ -2542,7 +2565,7 @@ version = "0.20.1"
 dependencies = [
  "craft-aaf",
  "craft-audio 0.1.0 (git+https://github.com/storytold/craft-libs?rev=82062077bba679ba5236e2d1a391f02d1533cbab)",
- "craft-timeline 0.1.0 (git+https://github.com/storytold/craft-libs?rev=47107f660191de2f0b425569506f4daa4faadac9)",
+ "craft-timeline 0.1.0 (git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c)",
  "filmcraft-cfb",
  "filmcraft-color",
  "filmcraft-geom",
@@ -2699,9 +2722,10 @@ dependencies = [
 name = "filmcraft-text"
 version = "0.20.1"
 dependencies = [
+ "craft-font-catalog",
  "filmcraft-color",
  "harfrust",
- "skrifa",
+ "skrifa 0.44.0",
  "tempfile",
  "unicode-bidi",
  "unicode-linebreak",
@@ -2712,7 +2736,7 @@ dependencies = [
 name = "filmcraft-time"
 version = "0.20.1"
 dependencies = [
- "craft-timeline 0.1.0 (git+https://github.com/storytold/craft-libs?rev=47107f660191de2f0b425569506f4daa4faadac9)",
+ "craft-timeline 0.1.0 (git+https://github.com/storytold/craft-libs?rev=7d08706a3dc62d99c46f9d31bced0cba3ac4c36c)",
 ]
 
 [[package]]
@@ -3373,7 +3397,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "log",
  "peniko",
- "skrifa",
+ "skrifa 0.44.0",
  "smallvec",
  "vello_common",
 ]
@@ -3582,7 +3606,7 @@ checksum = "c03d949a14aa089bbb282f7dd76a498a7f684428e4257202efc119ec010376f9"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
- "read-fonts",
+ "read-fonts 0.41.0",
  "smallvec",
 ]
 
@@ -5851,6 +5875,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5a0cf4bb6cbce4c29756270d189a5e400ac05e91192161d83a0bcb6e68492e8"
+dependencies = [
+ "bytemuck",
+ "font-types",
+ "once_cell",
+]
+
+[[package]]
 name = "reborrow"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6514,7 +6549,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
 dependencies = [
  "bytemuck",
- "read-fonts",
+ "read-fonts 0.41.0",
+]
+
+[[package]]
+name = "skrifa"
+version = "0.47.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "526e654b303ff4ad73a5a40b25de2b3ce3d039c5e3b6da5f89ae6e57004cb40f"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.44.0",
 ]
 
 [[package]]
